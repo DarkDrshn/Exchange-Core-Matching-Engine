@@ -1,6 +1,6 @@
 #include "exchange_core/engine/matching_engine.hpp"
 
-#include <cassert>
+#include <cstdlib>
 #include <variant>
 
 namespace
@@ -17,9 +17,17 @@ namespace
     using exchange_core::api::TradeExecuted;
     using exchange_core::engine::MatchingEngine;
 
+    void require(bool condition)
+    {
+        if (!condition)
+        {
+            std::abort();
+        }
+    }
+
     const auto &event_at(const MatchingEngine::EventBatch &events, std::size_t index)
     {
-        assert(index < events.size());
+        require(index < events.size());
         return events[index];
     }
 
@@ -28,9 +36,9 @@ namespace
         MatchingEngine engine;
         const auto events = engine.place_order(PlaceOrder{101, Side::buy, 100, 10});
 
-        assert(events.size() == 1);
-        assert(std::holds_alternative<OrderAccepted>(event_at(events, 0)));
-        assert(engine.contains_order(101));
+        require(events.size() == 1);
+        require(std::holds_alternative<OrderAccepted>(event_at(events, 0)));
+        require(engine.contains_order(101));
     }
 
     void matches_at_resting_price()
@@ -39,15 +47,15 @@ namespace
         engine.place_order(PlaceOrder{201, Side::sell, 100, 10});
 
         const auto events = engine.place_order(PlaceOrder{202, Side::buy, 105, 10});
-        assert(events.size() == 2);
-        assert(std::holds_alternative<OrderAccepted>(event_at(events, 0)));
+        require(events.size() == 2);
+        require(std::holds_alternative<OrderAccepted>(event_at(events, 0)));
         const auto &trade = std::get<TradeExecuted>(event_at(events, 1));
-        assert(trade.incoming_order_id == 202);
-        assert(trade.resting_order_id == 201);
-        assert(trade.execution_price == 100);
-        assert(trade.execution_quantity == 10);
-        assert(!engine.contains_order(201));
-        assert(!engine.contains_order(202));
+        require(trade.incoming_order_id == 202);
+        require(trade.resting_order_id == 201);
+        require(trade.execution_price == 100);
+        require(trade.execution_quantity == 10);
+        require(!engine.contains_order(201));
+        require(!engine.contains_order(202));
     }
 
     void preserves_fifo_at_one_price()
@@ -57,13 +65,13 @@ namespace
         engine.place_order(PlaceOrder{302, Side::sell, 100, 5});
 
         const auto events = engine.place_order(PlaceOrder{303, Side::buy, 100, 7});
-        assert(events.size() == 3);
-        assert(std::get<TradeExecuted>(event_at(events, 1)).resting_order_id == 301);
-        assert(std::get<TradeExecuted>(event_at(events, 1)).execution_quantity == 5);
-        assert(std::get<TradeExecuted>(event_at(events, 2)).resting_order_id == 302);
-        assert(std::get<TradeExecuted>(event_at(events, 2)).execution_quantity == 2);
-        assert(engine.contains_order(302));
-        assert(!engine.contains_order(303));
+        require(events.size() == 3);
+        require(std::get<TradeExecuted>(event_at(events, 1)).resting_order_id == 301);
+        require(std::get<TradeExecuted>(event_at(events, 1)).execution_quantity == 5);
+        require(std::get<TradeExecuted>(event_at(events, 2)).resting_order_id == 302);
+        require(std::get<TradeExecuted>(event_at(events, 2)).execution_quantity == 2);
+        require(engine.contains_order(302));
+        require(!engine.contains_order(303));
     }
 
     void rejects_duplicate_and_invalid_orders()
@@ -72,11 +80,11 @@ namespace
         engine.place_order(PlaceOrder{401, Side::buy, 100, 1});
 
         const auto duplicate = engine.place_order(PlaceOrder{401, Side::sell, 101, 1});
-        assert(std::get<OrderRejected>(event_at(duplicate, 0)).reason ==
-               RejectReason::duplicate_order_id);
+        require(std::get<OrderRejected>(event_at(duplicate, 0)).reason ==
+            RejectReason::duplicate_order_id);
 
         const auto invalid = engine.place_order(PlaceOrder{402, Side::buy, 0, 1});
-        assert(std::get<OrderRejected>(event_at(invalid, 0)).reason == RejectReason::invalid_order);
+        require(std::get<OrderRejected>(event_at(invalid, 0)).reason == RejectReason::invalid_order);
     }
 
     void cancels_resting_order_and_rejects_unknown_order()
@@ -85,12 +93,12 @@ namespace
         engine.place_order(PlaceOrder{501, Side::buy, 100, 4});
 
         const auto canceled = engine.cancel_order(CancelOrder{501});
-        assert(std::holds_alternative<OrderCanceled>(event_at(canceled, 0)));
-        assert(!engine.contains_order(501));
+        require(std::holds_alternative<OrderCanceled>(event_at(canceled, 0)));
+        require(!engine.contains_order(501));
 
         const auto rejected = engine.cancel_order(CancelOrder{501});
-        assert(std::get<OrderRejected>(event_at(rejected, 0)).reason ==
-               RejectReason::unknown_order_id);
+        require(std::get<OrderRejected>(event_at(rejected, 0)).reason ==
+            RejectReason::unknown_order_id);
     }
 
 } // namespace

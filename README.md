@@ -50,16 +50,21 @@ engine can be used as a library without exposing its internal data structures.
 
 Requirements:
 
-- CMake 3.20 or newer
+- CMake 3.25 or newer
 - C++17 compiler
 - Make or Ninja
 
 Configure and build from the repository root:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
+./scripts/build.sh debug
 ```
+
+For a Release build, run `./scripts/build.sh release`. The script uses CMake
+presets and stores generated files under `build/debug/` or `build/release/`.
+
+The build enables `-Wall`, `-Wextra`, `-Wpedantic`, `-Wconversion`, and
+`-Wsign-conversion` on GCC and Clang. Warnings are treated as errors by default.
 
 Run the tests:
 
@@ -103,6 +108,7 @@ book mutation and leaves event delivery to the caller.
 - Minimize allocations, copies, locks, logging, and other hot-path work.
 - Record benchmark workload, compiler, build type, hardware, and latency statistics.
 - Keep new modules within the folder boundaries described in `PROJECT_CONTEXT.md`.
+- Keep Debug and Release builds warning-free.
 
 ## License
 
