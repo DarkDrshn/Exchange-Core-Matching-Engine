@@ -10,46 +10,42 @@ namespace exchange_core::domain
         return {api::OrderRejected{order_id, reason}};
     }
 
-    OrderBook::EventBatch OrderBook::place_order(const api::PlaceOrder &request)
+    OrderBook::EventBatch OrderBook::place_order(const Order &order)
     {
-        if (request.price <= 0 || request.quantity == 0)
+        if (order_locations_.find(order.order_id) != order_locations_.end())
         {
-            return reject(request.order_id, api::RejectReason::invalid_order);
-        }
-        if (order_locations_.find(request.order_id) != order_locations_.end())
-        {
-            return reject(request.order_id, api::RejectReason::duplicate_order_id);
+            return reject(order.order_id, api::RejectReason::duplicate_order_id);
         }
 
         EventBatch events;
-        events.emplace_back(api::OrderAccepted{request.order_id});
-        api::Quantity remaining_quantity = request.quantity;
+        events.emplace_back(api::OrderAccepted{order.order_id});
+        Quantity remaining_quantity = order.quantity;
 
-        if (request.side == api::Side::buy)
+        if (order.side == api::Side::buy)
         {
-            while (remaining_quantity > 0 && !sell_levels_.empty())
+            while (remaining_quantity > Quantity{0} && !sell_levels_.empty())
             {
                 auto best_level = sell_levels_.begin();
-                if (request.price < best_level->first)
+                if (order.price < best_level->first)
                 {
                     break;
                 }
 
                 auto &resting_orders = best_level->second;
-                while (remaining_quantity > 0 && !resting_orders.empty())
+                while (remaining_quantity > Quantity{0} && !resting_orders.empty())
                 {
                     auto &resting_order = resting_orders.front();
-                    const api::Quantity executed_quantity =
+                    const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
                     events.emplace_back(api::TradeExecuted{
-                        request.order_id,
+                        order.order_id,
                         resting_order.order_id,
-                        best_level->first,
-                        executed_quantity});
+                        best_level->first.value(),
+                        executed_quantity.value()});
                     remaining_quantity -= executed_quantity;
                     resting_order.remaining_quantity -= executed_quantity;
 
-                    if (resting_order.remaining_quantity == 0)
+                    if (resting_order.remaining_quantity == Quantity{0})
                     {
                         order_locations_.erase(resting_order.order_id);
                         resting_orders.pop_front();
@@ -60,29 +56,29 @@ namespace exchange_core::domain
         }
         else
         {
-            while (remaining_quantity > 0 && !buy_levels_.empty())
+            while (remaining_quantity > Quantity{0} && !buy_levels_.empty())
             {
                 auto best_level = buy_levels_.begin();
-                if (request.price > best_level->first)
+                if (order.price > best_level->first)
                 {
                     break;
                 }
 
                 auto &resting_orders = best_level->second;
-                while (remaining_quantity > 0 && !resting_orders.empty())
+                while (remaining_quantity > Quantity{0} && !resting_orders.empty())
                 {
                     auto &resting_order = resting_orders.front();
-                    const api::Quantity executed_quantity =
+                    const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
                     events.emplace_back(api::TradeExecuted{
-                        request.order_id,
+                        order.order_id,
                         resting_order.order_id,
-                        best_level->first,
-                        executed_quantity});
+                        best_level->first.value(),
+                        executed_quantity.value()});
                     remaining_quantity -= executed_quantity;
                     resting_order.remaining_quantity -= executed_quantity;
 
-                    if (resting_order.remaining_quantity == 0)
+                    if (resting_order.remaining_quantity == Quantity{0})
                     {
                         order_locations_.erase(resting_order.order_id);
                         resting_orders.pop_front();
@@ -92,19 +88,19 @@ namespace exchange_core::domain
             }
         }
 
-        if (remaining_quantity > 0)
+        if (remaining_quantity > Quantity{0})
         {
-            const OrderLocation location{request.side, request.price};
-            order_locations_.emplace(request.order_id, location);
-            if (request.side == api::Side::buy)
+            const OrderLocation location{order.side, order.price};
+            order_locations_.emplace(order.order_id, location);
+            if (order.side == api::Side::buy)
             {
-                buy_levels_[request.price].push_back(
-                    RestingOrder{request.order_id, remaining_quantity});
+                buy_levels_[order.price].push_back(
+                    RestingOrder{order.order_id, remaining_quantity});
             }
             else
             {
-                sell_levels_[request.price].push_back(
-                    RestingOrder{request.order_id, remaining_quantity});
+                sell_levels_[order.price].push_back(
+                    RestingOrder{order.order_id, remaining_quantity});
             }
         }
 
@@ -129,7 +125,7 @@ namespace exchange_core::domain
         return order_locations_.find(order_id) != order_locations_.end();
     }
 
-    void OrderBook::remove_empty_level(api::Side side, api::Price price)
+    void OrderBook::remove_empty_level(api::Side side, Price price)
     {
         if (side == api::Side::buy)
         {

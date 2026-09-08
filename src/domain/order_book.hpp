@@ -1,6 +1,7 @@
 #pragma once
 
 #include "exchange_core/api/events.hpp"
+#include "exchange_core/domain/order.hpp"
 
 #include <deque>
 #include <functional>
@@ -16,7 +17,7 @@ namespace exchange_core::domain
     public:
         using EventBatch = std::vector<api::EngineEvent>;
 
-        EventBatch place_order(const api::PlaceOrder &request);
+        EventBatch place_order(const Order &order);
         EventBatch cancel_order(const api::CancelOrder &request);
         // cppcheck-suppress syntaxError
         [[nodiscard]] bool contains_order(api::OrderId order_id) const;
@@ -25,20 +26,20 @@ namespace exchange_core::domain
         struct RestingOrder
         {
             api::OrderId order_id{};
-            api::Quantity remaining_quantity{};
+            Quantity remaining_quantity{0};
         };
 
         struct OrderLocation
         {
             api::Side side{};
-            api::Price price{};
+            Price price{0};
         };
 
-        using BuyLevels = std::map<api::Price, std::deque<RestingOrder>, std::greater<>>;
-        using SellLevels = std::map<api::Price, std::deque<RestingOrder>>;
+        using BuyLevels = std::map<Price, std::deque<RestingOrder>, std::greater<>>;
+        using SellLevels = std::map<Price, std::deque<RestingOrder>>;
 
         EventBatch reject(api::OrderId order_id, api::RejectReason reason) const;
-        void remove_empty_level(api::Side side, api::Price price);
+        void remove_empty_level(api::Side side, Price price);
         void remove_order_from_level(api::OrderId order_id, const OrderLocation &location);
 
         BuyLevels buy_levels_;
