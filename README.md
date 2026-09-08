@@ -12,6 +12,7 @@ infrastructure and does not connect to live exchanges or handle real funds.
 - Public API under `include/exchange_core/`.
 - Private order-book state per `MatchingEngine` instance.
 - Integer price and quantity types.
+- Configurable maximum price and quantity limits.
 - Buy and sell limit orders.
 - Price-time priority matching.
 - Partial fills and FIFO behavior at one price level.
@@ -35,9 +36,9 @@ are documented in [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md).
 ## Repository Layout
 
 ```text
-include/exchange_core/   Stable public headers
+include/exchange_core/   Stable public headers and domain value types
 src/domain/              Private order-book implementation
-src/engine/              Matching-engine facade
+src/engine/               Matching-engine facade and configuration
 tests/                   Compatibility tests
 docs/                    Baselines and project documentation
 CMakeLists.txt           Build and test configuration
@@ -99,6 +100,14 @@ const auto events = engine.place_order({
 
 Orders return a batch of events. This keeps event production separate from internal
 book mutation and leaves event delivery to the caller.
+
+The engine accepts optional limits through `EngineConfig`:
+
+```cpp
+exchange_core::engine::MatchingEngine engine({100000, 1000});
+```
+
+Requests outside those limits are rejected before they reach the order book.
 
 ## Development Rules
 

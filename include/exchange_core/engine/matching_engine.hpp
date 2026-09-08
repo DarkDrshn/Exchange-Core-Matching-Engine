@@ -1,6 +1,7 @@
 #pragma once
 
 #include "exchange_core/api/events.hpp"
+#include "exchange_core/engine/engine_config.hpp"
 
 #include <memory>
 #include <vector>
@@ -13,7 +14,7 @@ namespace exchange_core::engine
     public:
         using EventBatch = std::vector<api::EngineEvent>;
 
-        MatchingEngine();
+        explicit MatchingEngine(EngineConfig configuration = {});
         ~MatchingEngine();
 
         MatchingEngine(const MatchingEngine &) = delete;

@@ -15,6 +15,7 @@ namespace
     using exchange_core::api::RejectReason;
     using exchange_core::api::Side;
     using exchange_core::api::TradeExecuted;
+    using exchange_core::engine::EngineConfig;
     using exchange_core::engine::MatchingEngine;
 
     void require(bool condition)
@@ -101,6 +102,22 @@ namespace
             RejectReason::unknown_order_id);
     }
 
+    void applies_engine_limits_at_the_api_boundary()
+    {
+        MatchingEngine engine(EngineConfig{100, 5});
+
+        const auto price_rejected = engine.place_order(PlaceOrder{601, Side::buy, 101, 1});
+        require(std::get<OrderRejected>(event_at(price_rejected, 0)).reason ==
+            RejectReason::invalid_order);
+
+        const auto quantity_rejected = engine.place_order(PlaceOrder{602, Side::buy, 100, 6});
+        require(std::get<OrderRejected>(event_at(quantity_rejected, 0)).reason ==
+            RejectReason::invalid_order);
+
+        const auto accepted = engine.place_order(PlaceOrder{603, Side::buy, 100, 5});
+        require(std::holds_alternative<OrderAccepted>(event_at(accepted, 0)));
+    }
+
 } // namespace
 
 int main()
@@ -110,5 +127,6 @@ int main()
     preserves_fifo_at_one_price();
     rejects_duplicate_and_invalid_orders();
     cancels_resting_order_and_rejects_unknown_order();
+    applies_engine_limits_at_the_api_boundary();
     return 0;
 }
