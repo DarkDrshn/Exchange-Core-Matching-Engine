@@ -38,7 +38,8 @@ namespace exchange_core::domain
         using BuyLevels = std::map<Price, std::deque<RestingOrder>, std::greater<>>;
         using SellLevels = std::map<Price, std::deque<RestingOrder>>;
 
-        EventBatch reject(api::OrderId order_id, api::RejectReason reason) const;
+        EventBatch reject(InstrumentId instrument_id, api::OrderId order_id,
+            api::RejectReason reason) const;
         void remove_empty_level(api::Side side, Price price);
         void remove_order_from_level(api::OrderId order_id, const OrderLocation &location);
 

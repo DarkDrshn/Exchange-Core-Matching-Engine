@@ -18,9 +18,11 @@ infrastructure and does not connect to live exchanges or handle real funds.
 - Partial fills and FIFO behavior at one price level.
 - Order cancellation.
 - Rejection of invalid and duplicate orders.
+- Optional event-sink delivery after each completed state mutation.
+- Instrument registry with isolated order books and instrument-aware events.
 
-The current implementation supports a single order book. The following features are
-planned for future releases:
+The current implementation requires instruments to be registered before orders are
+accepted. The following features are planned for future releases:
 
 - Multiple instruments.
 - Market, IOC, FOK, and post-only orders.
@@ -36,7 +38,7 @@ are documented in [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md).
 ## Repository Layout
 
 ```text
-include/exchange_core/   Stable public headers and domain value types
+include/exchange_core/   Stable public headers, domain types, and instrument registry
 src/domain/              Private order-book implementation
 src/engine/               Matching-engine facade and configuration
 tests/                   Compatibility tests
@@ -91,6 +93,7 @@ The `build/` directory contains generated files and is excluded from Git.
 exchange_core::engine::MatchingEngine engine;
 
 const auto events = engine.place_order({
+    1,
     1001,
     exchange_core::api::Side::buy,
     100,
@@ -98,8 +101,20 @@ const auto events = engine.place_order({
 });
 ```
 
-Orders return a batch of events. This keeps event production separate from internal
-book mutation and leaves event delivery to the caller.
+Register an instrument before submitting orders:
+
+```cpp
+engine.register_instrument({
+    1,
+    "PRIMARY",
+    exchange_core::domain::Price{1},
+    exchange_core::domain::Quantity{1},
+});
+```
+
+Orders return a batch of events. An optional `IEventSink` can receive the same events
+after the complete book mutation has finished, so event consumers can safely call
+back into the engine.
 
 The engine accepts optional limits through `EngineConfig`:
 
