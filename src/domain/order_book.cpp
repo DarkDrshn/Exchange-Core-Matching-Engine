@@ -5,20 +5,21 @@
 namespace exchange_core::domain
 {
 
-    OrderBook::EventBatch OrderBook::reject(api::OrderId order_id, api::RejectReason reason) const
+    OrderBook::EventBatch OrderBook::reject(
+        InstrumentId instrument_id, api::OrderId order_id, api::RejectReason reason) const
     {
-        return {api::OrderRejected{order_id, reason}};
+        return {api::OrderRejected{instrument_id, order_id, reason}};
     }
 
     OrderBook::EventBatch OrderBook::place_order(const Order &order)
     {
         if (order_locations_.find(order.order_id) != order_locations_.end())
         {
-            return reject(order.order_id, api::RejectReason::duplicate_order_id);
+            return reject(order.instrument_id, order.order_id, api::RejectReason::duplicate_order_id);
         }
 
         EventBatch events;
-        events.emplace_back(api::OrderAccepted{order.order_id});
+        events.emplace_back(api::OrderAccepted{order.instrument_id, order.order_id});
         Quantity remaining_quantity = order.quantity;
 
         if (order.side == api::Side::buy)
@@ -38,6 +39,7 @@ namespace exchange_core::domain
                     const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
                     events.emplace_back(api::TradeExecuted{
+                        order.instrument_id,
                         order.order_id,
                         resting_order.order_id,
                         best_level->first.value(),
@@ -71,6 +73,7 @@ namespace exchange_core::domain
                     const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
                     events.emplace_back(api::TradeExecuted{
+                        order.instrument_id,
                         order.order_id,
                         resting_order.order_id,
                         best_level->first.value(),
@@ -112,12 +115,12 @@ namespace exchange_core::domain
         const auto location = order_locations_.find(request.order_id);
         if (location == order_locations_.end())
         {
-            return reject(request.order_id, api::RejectReason::unknown_order_id);
+            return reject(request.instrument_id, request.order_id, api::RejectReason::unknown_order_id);
         }
 
         remove_order_from_level(request.order_id, location->second);
         order_locations_.erase(location);
-        return {api::OrderCanceled{request.order_id}};
+        return {api::OrderCanceled{request.instrument_id, request.order_id}};
     }
 
     bool OrderBook::contains_order(api::OrderId order_id) const
