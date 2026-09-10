@@ -9,10 +9,11 @@ namespace exchange_core::engine
     {
         domain::OrderBook order_book;
         EngineConfig configuration;
+        api::IEventSink *event_sink;
     };
 
-    MatchingEngine::MatchingEngine(EngineConfig configuration)
-        : implementation_(std::make_unique<Impl>(Impl{{}, configuration}))
+    MatchingEngine::MatchingEngine(EngineConfig configuration, api::IEventSink *event_sink)
+        : implementation_(std::make_unique<Impl>(Impl{{}, configuration, event_sink}))
     {
     }
 
@@ -28,7 +29,10 @@ namespace exchange_core::engine
             request.price > implementation_->configuration.maximum_order_price ||
             request.quantity > implementation_->configuration.maximum_order_quantity)
         {
-            return {api::OrderRejected{request.order_id, api::RejectReason::invalid_order}};
+            const EventBatch events = {
+                api::OrderRejected{request.order_id, api::RejectReason::invalid_order}};
+            publish(events);
+            return events;
         }
 
         const domain::Order order{
@@ -36,17 +40,34 @@ namespace exchange_core::engine
             request.side,
             domain::Price{request.price},
             domain::Quantity{request.quantity}};
-        return implementation_->order_book.place_order(order);
+        const EventBatch events = implementation_->order_book.place_order(order);
+        publish(events);
+        return events;
     }
 
     MatchingEngine::EventBatch MatchingEngine::cancel_order(const api::CancelOrder &request)
     {
-        return implementation_->order_book.cancel_order(request);
+        const EventBatch events = implementation_->order_book.cancel_order(request);
+        publish(events);
+        return events;
     }
 
     bool MatchingEngine::contains_order(api::OrderId order_id) const
     {
         return implementation_->order_book.contains_order(order_id);
+    }
+
+    void MatchingEngine::publish(const EventBatch &events) const
+    {
+        if (implementation_->event_sink == nullptr)
+        {
+            return;
+        }
+
+        for (const auto &event : events)
+        {
+            implementation_->event_sink->on_event(event);
+        }
     }
 
 } // namespace exchange_core::engine

@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <variant>
+#include <vector>
 
 namespace
 {
@@ -25,6 +26,39 @@ namespace
             std::abort();
         }
     }
+
+    class ReentrantEventSink final : public exchange_core::api::IEventSink
+    {
+    public:
+        void set_engine(const MatchingEngine *engine)
+        {
+            engine_ = engine;
+        }
+
+        void on_event(const EngineEvent &event) override
+        {
+            require(engine_ != nullptr);
+            require(!std::holds_alternative<OrderRejected>(event));
+            ++event_count_;
+            require(!engine_->contains_order(202));
+            observed_resting_order_state_.push_back(engine_->contains_order(201));
+        }
+
+        [[nodiscard]] std::size_t event_count() const
+        {
+            return event_count_;
+        }
+
+        [[nodiscard]] const std::vector<bool> &observed_resting_order_state() const
+        {
+            return observed_resting_order_state_;
+        }
+
+    private:
+        const MatchingEngine *engine_{nullptr};
+        std::size_t event_count_{0};
+        std::vector<bool> observed_resting_order_state_;
+    };
 
     const auto &event_at(const MatchingEngine::EventBatch &events, std::size_t index)
     {
@@ -118,6 +152,20 @@ namespace
         require(std::holds_alternative<OrderAccepted>(event_at(accepted, 0)));
     }
 
+    void publishes_events_after_mutation_to_a_reentrant_sink()
+    {
+        ReentrantEventSink sink;
+        MatchingEngine engine({}, &sink);
+        sink.set_engine(&engine);
+
+        engine.place_order(PlaceOrder{201, Side::sell, 100, 10});
+        const auto events = engine.place_order(PlaceOrder{202, Side::buy, 100, 10});
+
+        require(events.size() == 2);
+        require(sink.event_count() == 3);
+        require(sink.observed_resting_order_state() == std::vector<bool>{true, false, false});
+    }
+
 } // namespace
 
 int main()
@@ -128,5 +176,6 @@ int main()
     rejects_duplicate_and_invalid_orders();
     cancels_resting_order_and_rejects_unknown_order();
     applies_engine_limits_at_the_api_boundary();
+    publishes_events_after_mutation_to_a_reentrant_sink();
     return 0;
 }

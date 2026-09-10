@@ -18,6 +18,7 @@ infrastructure and does not connect to live exchanges or handle real funds.
 - Partial fills and FIFO behavior at one price level.
 - Order cancellation.
 - Rejection of invalid and duplicate orders.
+- Optional event-sink delivery after each completed state mutation.
 
 The current implementation supports a single order book. The following features are
 planned for future releases:
@@ -98,8 +99,9 @@ const auto events = engine.place_order({
 });
 ```
 
-Orders return a batch of events. This keeps event production separate from internal
-book mutation and leaves event delivery to the caller.
+Orders return a batch of events. An optional `IEventSink` can receive the same events
+after the complete book mutation has finished, so event consumers can safely call
+back into the engine.
 
 The engine accepts optional limits through `EngineConfig`:
 
