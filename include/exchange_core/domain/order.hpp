@@ -7,6 +7,7 @@ namespace exchange_core::domain
 {
     struct Order
     {
+        InstrumentId instrument_id{};
         api::OrderId order_id{};
         api::Side side{};
         Price price{0};

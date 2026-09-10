@@ -13,15 +13,18 @@ namespace exchange_core::api
         invalid_order,
         duplicate_order_id,
         unknown_order_id,
+        unknown_instrument,
     };
 
     struct OrderAccepted
     {
+        domain::InstrumentId instrument_id{};
         OrderId order_id{};
     };
 
     struct TradeExecuted
     {
+        domain::InstrumentId instrument_id{};
         OrderId incoming_order_id{};
         OrderId resting_order_id{};
         Price execution_price{};
@@ -30,11 +33,13 @@ namespace exchange_core::api
 
     struct OrderCanceled
     {
+        domain::InstrumentId instrument_id{};
         OrderId order_id{};
     };
 
     struct OrderRejected
     {
+        domain::InstrumentId instrument_id{};
         OrderId order_id{};
         RejectReason reason{};
     };

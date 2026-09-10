@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "exchange_core/domain/instrument.hpp"
+
 namespace exchange_core::api
 {
     enum class Side
@@ -16,6 +18,7 @@ namespace exchange_core::api
 
     struct PlaceOrder
     {
+        domain::InstrumentId instrument_id{};
         OrderId order_id{};
         Side side{};
         Price price{};
@@ -24,6 +27,7 @@ namespace exchange_core::api
 
     struct CancelOrder
     {
+        domain::InstrumentId instrument_id{};
         OrderId order_id{};
     };
 
