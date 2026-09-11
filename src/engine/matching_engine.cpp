@@ -31,8 +31,17 @@ namespace exchange_core::engine
         const auto instrument = implementation_->instruments.find(request.instrument_id);
         if (instrument == nullptr)
         {
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                request.side,
+                domain::Price{0},
+                domain::Quantity{0},
+                domain::Quantity{0},
+                domain::OrderStatus::rejected};
             const EventBatch events = {api::OrderRejected{
-                request.instrument_id, request.order_id, api::RejectReason::unknown_instrument}};
+                rejected_order, request.instrument_id, request.order_id,
+                api::RejectReason::unknown_instrument}};
             publish(events);
             return events;
         }
@@ -40,9 +49,17 @@ namespace exchange_core::engine
             request.price > implementation_->configuration.maximum_order_price ||
             request.quantity > implementation_->configuration.maximum_order_quantity)
         {
-            const EventBatch events = {
-                api::OrderRejected{
-                    request.instrument_id, request.order_id, api::RejectReason::invalid_order}};
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                request.side,
+                domain::Price{0},
+                domain::Quantity{0},
+                domain::Quantity{0},
+                domain::OrderStatus::rejected};
+            const EventBatch events = {api::OrderRejected{
+                rejected_order, request.instrument_id, request.order_id,
+                api::RejectReason::invalid_order}};
             publish(events);
             return events;
         }
@@ -52,7 +69,10 @@ namespace exchange_core::engine
             request.order_id,
             request.side,
             domain::Price{request.price},
-            domain::Quantity{request.quantity}};
+            domain::Quantity{request.quantity},
+            domain::Quantity{request.quantity},
+            domain::OrderStatus::new_order,
+            request.order_type};
         const EventBatch events = implementation_->order_books.at(request.instrument_id)
             .place_order(order);
         publish(events);
@@ -64,8 +84,17 @@ namespace exchange_core::engine
         const auto instrument = implementation_->instruments.find(request.instrument_id);
         if (instrument == nullptr)
         {
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                api::Side::buy,
+                domain::Price{0},
+                domain::Quantity{0},
+                domain::Quantity{0},
+                domain::OrderStatus::rejected};
             const EventBatch events = {api::OrderRejected{
-                request.instrument_id, request.order_id, api::RejectReason::unknown_instrument}};
+                rejected_order, request.instrument_id, request.order_id,
+                api::RejectReason::unknown_instrument}};
             publish(events);
             return events;
         }
