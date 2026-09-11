@@ -40,6 +40,7 @@ namespace exchange_core::domain
         using SellLevels = std::map<Price, std::deque<RestingOrder>>;
 
         EventBatch reject(const Order &order, api::RejectReason reason) const;
+        [[nodiscard]] bool can_fully_match(const Order &order) const;
         void remove_empty_level(api::Side side, Price price);
         void remove_order_from_level(api::OrderId order_id, const OrderLocation &location);
 

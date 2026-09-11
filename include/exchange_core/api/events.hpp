@@ -16,6 +16,7 @@ namespace exchange_core::api
         unknown_order_id,
         unknown_instrument,
         post_only_rejected,
+        fok_not_filled,
     };
 
     struct OrderAccepted

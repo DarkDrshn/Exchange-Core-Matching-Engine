@@ -26,6 +26,11 @@ namespace exchange_core::domain
             return reject(order, api::RejectReason::duplicate_order_id);
         }
 
+        if (order.order_type == api::OrderType::fok && !can_fully_match(order))
+        {
+            return reject(order, api::RejectReason::fok_not_filled);
+        }
+
         if (order.order_type == api::OrderType::post_only)
         {
             const bool crosses_book = (order.side == api::Side::buy && !sell_levels_.empty() &&
@@ -50,7 +55,8 @@ namespace exchange_core::domain
             while (remaining_quantity > Quantity{0} && !sell_levels_.empty())
             {
                 auto best_level = sell_levels_.begin();
-                if (order.price < best_level->first)
+                if (order.order_type != api::OrderType::market &&
+                    order.price < best_level->first)
                 {
                     break;
                 }
@@ -92,7 +98,8 @@ namespace exchange_core::domain
             while (remaining_quantity > Quantity{0} && !buy_levels_.empty())
             {
                 auto best_level = buy_levels_.begin();
-                if (order.price > best_level->first)
+                if (order.order_type != api::OrderType::market &&
+                    order.price > best_level->first)
                 {
                     break;
                 }
@@ -130,7 +137,9 @@ namespace exchange_core::domain
             }
         }
 
-        if (order.order_type == api::OrderType::ioc)
+        if (order.order_type == api::OrderType::ioc ||
+            order.order_type == api::OrderType::fok ||
+            order.order_type == api::OrderType::market)
         {
             return events;
         }
@@ -152,6 +161,54 @@ namespace exchange_core::domain
         }
 
         return events;
+    }
+
+    bool OrderBook::can_fully_match(const Order &order) const
+    {
+        Quantity remaining_quantity = order.quantity;
+
+        if (order.side == api::Side::buy)
+        {
+            for (const auto &level : sell_levels_)
+            {
+                if (order.order_type != api::OrderType::market &&
+                    order.price < level.first)
+                {
+                    break;
+                }
+                for (const auto &resting_order : level.second)
+                {
+                    if (resting_order.remaining_quantity > remaining_quantity ||
+                        resting_order.remaining_quantity == remaining_quantity)
+                    {
+                        return true;
+                    }
+                    remaining_quantity -= resting_order.remaining_quantity;
+                }
+            }
+        }
+        else
+        {
+            for (const auto &level : buy_levels_)
+            {
+                if (order.order_type != api::OrderType::market &&
+                    order.price > level.first)
+                {
+                    break;
+                }
+                for (const auto &resting_order : level.second)
+                {
+                    if (resting_order.remaining_quantity > remaining_quantity ||
+                        resting_order.remaining_quantity == remaining_quantity)
+                    {
+                        return true;
+                    }
+                    remaining_quantity -= resting_order.remaining_quantity;
+                }
+            }
+        }
+
+        return false;
     }
 
     OrderBook::EventBatch OrderBook::cancel_order(const api::CancelOrder &request)

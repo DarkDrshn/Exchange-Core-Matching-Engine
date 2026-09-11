@@ -15,7 +15,9 @@ namespace exchange_core::api
     enum class OrderType
     {
         limit,
+        market,
         ioc,
+        fok,
         post_only,
     };
 

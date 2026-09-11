@@ -38,15 +38,20 @@ namespace exchange_core::engine
                 domain::Price{0},
                 domain::Quantity{0},
                 domain::Quantity{0},
-                domain::OrderStatus::rejected};
+                domain::OrderStatus::rejected,
+                request.order_type};
             const EventBatch events = {api::OrderRejected{
                 rejected_order, request.instrument_id, request.order_id,
                 api::RejectReason::unknown_instrument}};
             publish(events);
             return events;
         }
-        if (request.price <= 0 || request.quantity == 0 ||
-            request.price > implementation_->configuration.maximum_order_price ||
+        const bool valid_market_price = request.order_type == api::OrderType::market &&
+            request.price == 0;
+        const bool valid_limit_price = request.order_type != api::OrderType::market &&
+            request.price > 0 &&
+            request.price <= implementation_->configuration.maximum_order_price;
+        if ((!valid_market_price && !valid_limit_price) || request.quantity == 0 ||
             request.quantity > implementation_->configuration.maximum_order_quantity)
         {
             const domain::Order rejected_order{
@@ -56,7 +61,8 @@ namespace exchange_core::engine
                 domain::Price{0},
                 domain::Quantity{0},
                 domain::Quantity{0},
-                domain::OrderStatus::rejected};
+                domain::OrderStatus::rejected,
+                request.order_type};
             const EventBatch events = {api::OrderRejected{
                 rejected_order, request.instrument_id, request.order_id,
                 api::RejectReason::invalid_order}};

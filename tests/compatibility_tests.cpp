@@ -178,6 +178,35 @@ namespace
         require(engine.contains_order(1, 904));
     }
 
+    void implements_market_and_fill_or_kill_orders()
+    {
+        MatchingEngine engine;
+        register_primary_instrument(engine);
+        engine.place_order(PlaceOrder{1, 1001, Side::sell, 100, 3, OrderType::limit});
+        engine.place_order(PlaceOrder{1, 1002, Side::sell, 101, 4, OrderType::limit});
+
+        const auto market_fill = engine.place_order(
+            PlaceOrder{1, 1003, Side::buy, 0, 3, OrderType::market});
+        require(market_fill.size() == 2);
+        require(std::get<TradeExecuted>(event_at(market_fill, 1)).execution_price == 100);
+        require(!engine.contains_order(1, 1003));
+        require(engine.contains_order(1, 1002));
+
+        const auto fok_rejected = engine.place_order(
+            PlaceOrder{1, 1004, Side::buy, 101, 5, OrderType::fok});
+        require(fok_rejected.size() == 1);
+        require(std::get<OrderRejected>(event_at(fok_rejected, 0)).reason ==
+            RejectReason::fok_not_filled);
+        require(engine.contains_order(1, 1002));
+
+        const auto fok_fill = engine.place_order(
+            PlaceOrder{1, 1005, Side::buy, 101, 4, OrderType::fok});
+        require(fok_fill.size() == 2);
+        require(std::holds_alternative<TradeExecuted>(event_at(fok_fill, 1)));
+        require(!engine.contains_order(1, 1002));
+        require(!engine.contains_order(1, 1005));
+    }
+
     void cancels_resting_order_and_rejects_unknown_order()
     {
         MatchingEngine engine;
@@ -261,6 +290,7 @@ int main()
     preserves_fifo_at_one_price();
     rejects_duplicate_and_invalid_orders();
     implements_ioc_and_post_only_orders();
+    implements_market_and_fill_or_kill_orders();
     cancels_resting_order_and_rejects_unknown_order();
     applies_engine_limits_at_the_api_boundary();
     publishes_events_after_mutation_to_a_reentrant_sink();

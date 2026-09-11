@@ -21,12 +21,14 @@ infrastructure and does not connect to live exchanges or handle real funds.
 - Optional event-sink delivery after each completed state mutation.
 - Instrument registry with isolated order books and instrument-aware events.
 - Explicit `Order`, `Trade`, `OrderStatus`, and `ExecutionId` lifecycle models.
-- `OrderType::limit`, `OrderType::ioc`, and `OrderType::post_only` semantics.
+- `OrderType::limit`, `OrderType::market`, `OrderType::ioc`, `OrderType::fok`, and
+    `OrderType::post_only` semantics.
+- Market orders sweep available levels without resting, while FOK orders preflight
+    liquidity and reject atomically when the requested quantity is unavailable.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
 
-- Market and FOK order behavior.
 - Risk checks and position accounting.
 - Market-data publication.
 - Event journaling, snapshots, and replay.
@@ -83,6 +85,10 @@ reports:
 100% tests passed, 0 tests failed
 1/1 exchange_core_compatibility
 ```
+
+Day 9 verification covers multi-level market-order sweeps, non-resting market
+orders, successful FOK execution, and atomic FOK rejection when liquidity is
+insufficient.
 
 The `build/` directory contains generated files and is excluded from Git.
 
