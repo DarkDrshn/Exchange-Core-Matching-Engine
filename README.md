@@ -20,11 +20,11 @@ infrastructure and does not connect to live exchanges or handle real funds.
 - Rejection of invalid and duplicate orders.
 - Optional event-sink delivery after each completed state mutation.
 - Instrument registry with isolated order books and instrument-aware events.
+- Explicit `Order`, `Trade`, `OrderStatus`, and `ExecutionId` lifecycle models.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
 
-- Multiple instruments.
 - Market, IOC, FOK, and post-only orders.
 - Risk checks and position accounting.
 - Market-data publication.

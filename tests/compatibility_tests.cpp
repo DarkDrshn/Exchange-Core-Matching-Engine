@@ -16,6 +16,12 @@ namespace
     using exchange_core::api::RejectReason;
     using exchange_core::api::Side;
     using exchange_core::api::TradeExecuted;
+    using exchange_core::domain::ExecutionId;
+    using exchange_core::domain::Order;
+    using exchange_core::domain::OrderStatus;
+    using exchange_core::domain::Price;
+    using exchange_core::domain::Quantity;
+    using exchange_core::domain::Trade;
     using exchange_core::engine::EngineConfig;
     using exchange_core::engine::MatchingEngine;
 
@@ -76,6 +82,19 @@ namespace
     {
         require(index < events.size());
         return events[index];
+    }
+
+    void validates_order_lifecycle_types()
+    {
+        Order order{1, 101, Side::buy, Price{100}, Quantity{10}, Quantity{10}, OrderStatus::new_order};
+        require(order.remaining_quantity == Quantity{10});
+        require(order.status == OrderStatus::new_order);
+
+        Trade trade{ExecutionId{42}, 1, 101, 202, Price{100}, Quantity{4}};
+        require(trade.execution_id == ExecutionId{42});
+        require(trade.execution_quantity == Quantity{4});
+        require(trade.incoming_order_id == 101);
+        require(trade.resting_order_id == 202);
     }
 
     void accepts_resting_order()
@@ -215,6 +234,7 @@ namespace
 
 int main()
 {
+    validates_order_lifecycle_types();
     accepts_resting_order();
     matches_at_resting_price();
     preserves_fifo_at_one_price();

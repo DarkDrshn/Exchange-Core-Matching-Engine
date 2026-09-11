@@ -8,7 +8,16 @@ namespace exchange_core::domain
     OrderBook::EventBatch OrderBook::reject(
         InstrumentId instrument_id, api::OrderId order_id, api::RejectReason reason) const
     {
-        return {api::OrderRejected{instrument_id, order_id, reason}};
+        const domain::Order rejected_order{
+            instrument_id,
+            order_id,
+            api::Side::buy,
+            Price{0},
+            Quantity{0},
+            Quantity{0},
+            domain::OrderStatus::rejected};
+
+        return {api::OrderRejected{rejected_order, instrument_id, order_id, reason}};
     }
 
     OrderBook::EventBatch OrderBook::place_order(const Order &order)
@@ -19,7 +28,10 @@ namespace exchange_core::domain
         }
 
         EventBatch events;
-        events.emplace_back(api::OrderAccepted{order.instrument_id, order.order_id});
+        domain::Order accepted_order = order;
+        accepted_order.remaining_quantity = order.quantity;
+        accepted_order.status = domain::OrderStatus::new_order;
+        events.emplace_back(api::OrderAccepted{accepted_order, order.instrument_id, order.order_id});
         Quantity remaining_quantity = order.quantity;
 
         if (order.side == api::Side::buy)
@@ -38,12 +50,20 @@ namespace exchange_core::domain
                     auto &resting_order = resting_orders.front();
                     const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
-                    events.emplace_back(api::TradeExecuted{
+                    const domain::Trade trade{
+                        static_cast<domain::ExecutionId>(order.order_id + resting_order.order_id),
                         order.instrument_id,
                         order.order_id,
                         resting_order.order_id,
-                        best_level->first.value(),
-                        executed_quantity.value()});
+                        best_level->first,
+                        executed_quantity};
+                    events.emplace_back(api::TradeExecuted{
+                        trade,
+                        order.instrument_id,
+                        order.order_id,
+                        resting_order.order_id,
+                        api::Price{best_level->first.value()},
+                        api::Quantity{executed_quantity.value()}});
                     remaining_quantity -= executed_quantity;
                     resting_order.remaining_quantity -= executed_quantity;
 
@@ -72,12 +92,20 @@ namespace exchange_core::domain
                     auto &resting_order = resting_orders.front();
                     const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
-                    events.emplace_back(api::TradeExecuted{
+                    const domain::Trade trade{
+                        static_cast<domain::ExecutionId>(order.order_id + resting_order.order_id),
                         order.instrument_id,
                         order.order_id,
                         resting_order.order_id,
-                        best_level->first.value(),
-                        executed_quantity.value()});
+                        best_level->first,
+                        executed_quantity};
+                    events.emplace_back(api::TradeExecuted{
+                        trade,
+                        order.instrument_id,
+                        order.order_id,
+                        resting_order.order_id,
+                        api::Price{best_level->first.value()},
+                        api::Quantity{executed_quantity.value()}});
                     remaining_quantity -= executed_quantity;
                     resting_order.remaining_quantity -= executed_quantity;
 
@@ -120,7 +148,15 @@ namespace exchange_core::domain
 
         remove_order_from_level(request.order_id, location->second);
         order_locations_.erase(location);
-        return {api::OrderCanceled{request.instrument_id, request.order_id}};
+        const domain::Order canceled_order{
+            request.instrument_id,
+            request.order_id,
+            location->second.side,
+            location->second.price,
+            Quantity{0},
+            Quantity{0},
+            domain::OrderStatus::canceled};
+        return {api::OrderCanceled{canceled_order, request.instrument_id, request.order_id}};
     }
 
     bool OrderBook::contains_order(api::OrderId order_id) const
