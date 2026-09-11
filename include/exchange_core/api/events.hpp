@@ -15,6 +15,7 @@ namespace exchange_core::api
         duplicate_order_id,
         unknown_order_id,
         unknown_instrument,
+        post_only_rejected,
     };
 
     struct OrderAccepted

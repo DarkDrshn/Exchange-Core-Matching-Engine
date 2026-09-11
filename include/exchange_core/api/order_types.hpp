@@ -12,6 +12,13 @@ namespace exchange_core::api
         sell,
     };
 
+    enum class OrderType
+    {
+        limit,
+        ioc,
+        post_only,
+    };
+
     using OrderId = std::uint64_t;
     using Price = std::int64_t;
     using Quantity = std::uint64_t;
@@ -23,6 +30,7 @@ namespace exchange_core::api
         Side side{};
         Price price{};
         Quantity quantity{};
+        OrderType order_type{OrderType::limit};
     };
 
     struct CancelOrder

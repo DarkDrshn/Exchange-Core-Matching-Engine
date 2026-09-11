@@ -12,6 +12,7 @@ namespace
     using exchange_core::api::OrderAccepted;
     using exchange_core::api::OrderCanceled;
     using exchange_core::api::OrderRejected;
+    using exchange_core::api::OrderType;
     using exchange_core::api::PlaceOrder;
     using exchange_core::api::RejectReason;
     using exchange_core::api::Side;
@@ -157,6 +158,26 @@ namespace
         require(std::get<OrderRejected>(event_at(invalid, 0)).reason == RejectReason::invalid_order);
     }
 
+    void implements_ioc_and_post_only_orders()
+    {
+        MatchingEngine engine;
+        register_primary_instrument(engine);
+        engine.place_order(PlaceOrder{1, 901, Side::sell, 100, 10, OrderType::limit});
+
+        const auto ioc_fill = engine.place_order(PlaceOrder{1, 902, Side::buy, 100, 6, OrderType::ioc});
+        require(ioc_fill.size() == 2);
+        require(std::holds_alternative<TradeExecuted>(event_at(ioc_fill, 1)));
+        require(!engine.contains_order(1, 902));
+
+        const auto post_only_rejected = engine.place_order(PlaceOrder{1, 903, Side::buy, 101, 4, OrderType::post_only});
+        require(std::get<OrderRejected>(event_at(post_only_rejected, 0)).reason ==
+            RejectReason::post_only_rejected);
+
+        const auto post_only_pass = engine.place_order(PlaceOrder{1, 904, Side::buy, 99, 4, OrderType::post_only});
+        require(std::holds_alternative<OrderAccepted>(event_at(post_only_pass, 0)));
+        require(engine.contains_order(1, 904));
+    }
+
     void cancels_resting_order_and_rejects_unknown_order()
     {
         MatchingEngine engine;
@@ -239,6 +260,7 @@ int main()
     matches_at_resting_price();
     preserves_fifo_at_one_price();
     rejects_duplicate_and_invalid_orders();
+    implements_ioc_and_post_only_orders();
     cancels_resting_order_and_rejects_unknown_order();
     applies_engine_limits_at_the_api_boundary();
     publishes_events_after_mutation_to_a_reentrant_sink();

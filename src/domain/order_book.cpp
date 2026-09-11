@@ -4,27 +4,38 @@
 
 namespace exchange_core::domain
 {
-
-    OrderBook::EventBatch OrderBook::reject(
-        InstrumentId instrument_id, api::OrderId order_id, api::RejectReason reason) const
+    OrderBook::EventBatch OrderBook::reject(const Order &order, api::RejectReason reason) const
     {
         const domain::Order rejected_order{
-            instrument_id,
-            order_id,
-            api::Side::buy,
-            Price{0},
-            Quantity{0},
-            Quantity{0},
-            domain::OrderStatus::rejected};
+            order.instrument_id,
+            order.order_id,
+            order.side,
+            order.price,
+            order.quantity,
+            order.quantity,
+            domain::OrderStatus::rejected,
+            order.order_type};
 
-        return {api::OrderRejected{rejected_order, instrument_id, order_id, reason}};
+        return {api::OrderRejected{rejected_order, order.instrument_id, order.order_id, reason}};
     }
 
     OrderBook::EventBatch OrderBook::place_order(const Order &order)
     {
         if (order_locations_.find(order.order_id) != order_locations_.end())
         {
-            return reject(order.instrument_id, order.order_id, api::RejectReason::duplicate_order_id);
+            return reject(order, api::RejectReason::duplicate_order_id);
+        }
+
+        if (order.order_type == api::OrderType::post_only)
+        {
+            const bool crosses_book = (order.side == api::Side::buy && !sell_levels_.empty() &&
+                                          order.price >= sell_levels_.begin()->first) ||
+                                     (order.side == api::Side::sell && !buy_levels_.empty() &&
+                                          order.price <= buy_levels_.begin()->first);
+            if (crosses_book)
+            {
+                return reject(order, api::RejectReason::post_only_rejected);
+            }
         }
 
         EventBatch events;
@@ -51,7 +62,7 @@ namespace exchange_core::domain
                     const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
                     const domain::Trade trade{
-                        static_cast<domain::ExecutionId>(order.order_id + resting_order.order_id),
+                        next_execution_id_++,
                         order.instrument_id,
                         order.order_id,
                         resting_order.order_id,
@@ -93,7 +104,7 @@ namespace exchange_core::domain
                     const Quantity executed_quantity =
                         std::min(remaining_quantity, resting_order.remaining_quantity);
                     const domain::Trade trade{
-                        static_cast<domain::ExecutionId>(order.order_id + resting_order.order_id),
+                        next_execution_id_++,
                         order.instrument_id,
                         order.order_id,
                         resting_order.order_id,
@@ -119,6 +130,11 @@ namespace exchange_core::domain
             }
         }
 
+        if (order.order_type == api::OrderType::ioc)
+        {
+            return events;
+        }
+
         if (remaining_quantity > Quantity{0})
         {
             const OrderLocation location{order.side, order.price};
@@ -126,12 +142,12 @@ namespace exchange_core::domain
             if (order.side == api::Side::buy)
             {
                 buy_levels_[order.price].push_back(
-                    RestingOrder{order.order_id, remaining_quantity});
+                    RestingOrder{order.order_id, remaining_quantity, order.order_type});
             }
             else
             {
                 sell_levels_[order.price].push_back(
-                    RestingOrder{order.order_id, remaining_quantity});
+                    RestingOrder{order.order_id, remaining_quantity, order.order_type});
             }
         }
 
@@ -143,7 +159,49 @@ namespace exchange_core::domain
         const auto location = order_locations_.find(request.order_id);
         if (location == order_locations_.end())
         {
-            return reject(request.instrument_id, request.order_id, api::RejectReason::unknown_order_id);
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                api::Side::buy,
+                Price{0},
+                Quantity{0},
+                Quantity{0},
+                domain::OrderStatus::rejected,
+                api::OrderType::limit};
+            return {api::OrderRejected{rejected_order, request.instrument_id, request.order_id,
+                api::RejectReason::unknown_order_id}};
+        }
+
+        api::OrderType order_type{api::OrderType::limit};
+        if (location->second.side == api::Side::buy)
+        {
+            const auto level = buy_levels_.find(location->second.price);
+            if (level != buy_levels_.end())
+            {
+                for (const auto &resting_order : level->second)
+                {
+                    if (resting_order.order_id == request.order_id)
+                    {
+                        order_type = resting_order.order_type;
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            const auto level = sell_levels_.find(location->second.price);
+            if (level != sell_levels_.end())
+            {
+                for (const auto &resting_order : level->second)
+                {
+                    if (resting_order.order_id == request.order_id)
+                    {
+                        order_type = resting_order.order_type;
+                        break;
+                    }
+                }
+            }
         }
 
         remove_order_from_level(request.order_id, location->second);
@@ -155,7 +213,8 @@ namespace exchange_core::domain
             location->second.price,
             Quantity{0},
             Quantity{0},
-            domain::OrderStatus::canceled};
+            domain::OrderStatus::canceled,
+            order_type};
         return {api::OrderCanceled{canceled_order, request.instrument_id, request.order_id}};
     }
 

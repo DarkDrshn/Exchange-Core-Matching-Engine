@@ -27,6 +27,7 @@ namespace exchange_core::domain
         Quantity quantity{0};
         Quantity remaining_quantity{0};
         OrderStatus status{OrderStatus::new_order};
+        api::OrderType order_type{api::OrderType::limit};
     };
 
     struct Trade

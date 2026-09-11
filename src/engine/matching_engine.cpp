@@ -69,7 +69,10 @@ namespace exchange_core::engine
             request.order_id,
             request.side,
             domain::Price{request.price},
-            domain::Quantity{request.quantity}};
+            domain::Quantity{request.quantity},
+            domain::Quantity{request.quantity},
+            domain::OrderStatus::new_order,
+            request.order_type};
         const EventBatch events = implementation_->order_books.at(request.instrument_id)
             .place_order(order);
         publish(events);

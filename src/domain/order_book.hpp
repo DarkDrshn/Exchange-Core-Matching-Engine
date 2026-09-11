@@ -27,6 +27,7 @@ namespace exchange_core::domain
         {
             api::OrderId order_id{};
             Quantity remaining_quantity{0};
+            api::OrderType order_type{api::OrderType::limit};
         };
 
         struct OrderLocation
@@ -38,14 +39,14 @@ namespace exchange_core::domain
         using BuyLevels = std::map<Price, std::deque<RestingOrder>, std::greater<>>;
         using SellLevels = std::map<Price, std::deque<RestingOrder>>;
 
-        EventBatch reject(InstrumentId instrument_id, api::OrderId order_id,
-            api::RejectReason reason) const;
+        EventBatch reject(const Order &order, api::RejectReason reason) const;
         void remove_empty_level(api::Side side, Price price);
         void remove_order_from_level(api::OrderId order_id, const OrderLocation &location);
 
         BuyLevels buy_levels_;
         SellLevels sell_levels_;
         std::unordered_map<api::OrderId, OrderLocation> order_locations_;
+        std::uint64_t next_execution_id_{1};
     };
 
 } // namespace exchange_core::domain
