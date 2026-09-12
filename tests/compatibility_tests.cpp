@@ -253,6 +253,12 @@ namespace
         require(std::holds_alternative<OrderAccepted>(event_at(resting, 0)));
         require(engine.account_open_order_quantity(77) == 4);
 
+        const auto duplicate = engine.place_order(
+            PlaceOrder{1, 1101, Side::sell, 100, 1, OrderType::limit, 88});
+        require(std::get<OrderRejected>(event_at(duplicate, 0)).reason ==
+            RejectReason::duplicate_order_id);
+        require(engine.account_open_order_quantity(77) == 4);
+
         const auto second_order = engine.place_order(
             PlaceOrder{1, 1102, Side::buy, 100, 2, OrderType::limit, 77});
         require(std::get<OrderRejected>(event_at(second_order, 0)).reason ==
@@ -269,6 +275,30 @@ namespace
         require(engine.account_position(88, 1) == -4);
         require(engine.account_open_order_quantity(77) == 0);
         require(engine.account_open_order_quantity(88) == 0);
+    }
+
+    void applies_credit_limits_and_releases_margin_reservations()
+    {
+        MatchingEngine engine(EngineConfig{100, 20, 10000, 20, 20, 500, 5000});
+        register_primary_instrument(engine);
+
+        engine.place_order(PlaceOrder{1, 1201, Side::buy, 100, 4, OrderType::limit, 91});
+        require(engine.account_reserved_margin(91) == 200);
+
+        const auto credit_rejected = engine.place_order(
+            PlaceOrder{1, 1202, Side::buy, 100, 7, OrderType::limit, 91});
+        require(std::get<OrderRejected>(event_at(credit_rejected, 0)).reason ==
+            RejectReason::risk_credit_limit);
+        require(engine.account_reserved_margin(91) == 200);
+
+        const auto canceled = engine.cancel_order(CancelOrder{1, 1201, 91});
+        require(std::holds_alternative<OrderCanceled>(event_at(canceled, 0)));
+        require(engine.account_reserved_margin(91) == 0);
+
+        engine.place_order(PlaceOrder{1, 1203, Side::buy, 100, 4, OrderType::limit, 91});
+        engine.place_order(PlaceOrder{1, 1204, Side::sell, 100, 4, OrderType::limit, 92});
+        require(engine.account_reserved_margin(91) == 0);
+        require(engine.account_reserved_margin(92) == 0);
     }
 
     void publishes_events_after_mutation_to_a_reentrant_sink()
@@ -326,6 +356,7 @@ int main()
     cancels_resting_order_and_rejects_unknown_order();
     applies_engine_limits_at_the_api_boundary();
     tracks_account_reservations_positions_and_ownership();
+    applies_credit_limits_and_releases_margin_reservations();
     publishes_events_after_mutation_to_a_reentrant_sink();
     isolates_identical_order_ids_between_instruments();
     rejects_unknown_instruments();

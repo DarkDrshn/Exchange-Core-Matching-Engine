@@ -23,6 +23,7 @@ namespace exchange_core::api
         risk_position_limit,
         risk_open_order_limit,
         unauthorized_order,
+        risk_credit_limit,
     };
 
     struct OrderAccepted

@@ -110,9 +110,15 @@ namespace exchange_core::engine
             : implementation_->account_risk_manager.evaluate(request);
         if (account_rejection != risk::AccountRejectReason::none)
         {
-            const auto reason = account_rejection == risk::AccountRejectReason::position_limit
-                ? api::RejectReason::risk_position_limit
-                : api::RejectReason::risk_open_order_limit;
+            auto reason = api::RejectReason::risk_open_order_limit;
+            if (account_rejection == risk::AccountRejectReason::position_limit)
+            {
+                reason = api::RejectReason::risk_position_limit;
+            }
+            else if (account_rejection == risk::AccountRejectReason::credit_limit)
+            {
+                reason = api::RejectReason::risk_credit_limit;
+            }
             const domain::Order rejected_order{
                 request.instrument_id,
                 request.order_id,
@@ -146,7 +152,7 @@ namespace exchange_core::engine
             request.account_id};
         const EventBatch events = implementation_->order_books.at(request.instrument_id)
             .place_order(order);
-        implementation_->account_risk_manager.apply(request, events);
+        implementation_->account_risk_manager.apply(request, events, !duplicate_order);
         publish(events);
         return events;
     }
@@ -180,7 +186,7 @@ namespace exchange_core::engine
             0,
             api::OrderType::limit,
             request.account_id};
-        implementation_->account_risk_manager.apply(account_context, events);
+        implementation_->account_risk_manager.apply(account_context, events, false);
         publish(events);
         return events;
     }
@@ -220,6 +226,11 @@ namespace exchange_core::engine
     api::Quantity MatchingEngine::account_open_order_quantity(api::AccountId account_id) const
     {
         return implementation_->account_risk_manager.open_order_quantity(account_id);
+    }
+
+    api::Quantity MatchingEngine::account_reserved_margin(api::AccountId account_id) const
+    {
+        return implementation_->account_risk_manager.reserved_margin(account_id);
     }
 
     void MatchingEngine::publish(const EventBatch &events) const

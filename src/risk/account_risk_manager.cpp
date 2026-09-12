@@ -6,6 +6,30 @@
 
 namespace exchange_core::risk
 {
+    namespace
+    {
+        constexpr api::Quantity basis_points_scale{10000};
+
+        api::Quantity saturated_multiply(api::Quantity left, api::Quantity right)
+        {
+            if (left == api::Quantity{0} || right == api::Quantity{0})
+            {
+                return 0;
+            }
+            const auto maximum = std::numeric_limits<api::Quantity>::max();
+            return left > maximum / right ? maximum : left * right;
+        }
+
+        api::Quantity proportional_release(
+            api::Quantity reserved, api::Quantity released, api::Quantity remaining)
+        {
+            const auto whole_units = reserved / remaining;
+            const auto remainder = reserved % remaining;
+            return saturated_multiply(whole_units, released) +
+                saturated_multiply(remainder, released) / remaining;
+        }
+    }
+
     AccountRiskManager::AccountState AccountRiskManager::state_for(
         api::AccountId account_id, domain::InstrumentId instrument_id) const
     {
@@ -51,15 +75,35 @@ namespace exchange_core::risk
             return AccountRejectReason::position_limit;
         }
 
+        const auto state_margin = state.reserved_margin;
+        const auto order_margin = margin_for(request);
+        if (order_margin > configuration_.maximum_account_credit ||
+            state_margin > configuration_.maximum_account_credit - order_margin)
+        {
+            return AccountRejectReason::credit_limit;
+        }
+
         return AccountRejectReason::none;
+    }
+
+    api::Quantity AccountRiskManager::margin_for(const api::PlaceOrder &request) const
+    {
+        const auto notional = request.order_type == api::OrderType::market
+            ? configuration_.maximum_order_notional
+            : saturated_multiply(static_cast<api::Quantity>(request.price), request.quantity);
+        return saturated_multiply(notional, configuration_.initial_margin_basis_points) /
+            basis_points_scale;
     }
 
     void AccountRiskManager::reserve(const api::PlaceOrder &request)
     {
         const OrderKey key{request.instrument_id, request.order_id};
-        reservations_[key] = Reservation{request.account_id, request.side, request.quantity};
+        const auto reserved_order_margin = margin_for(request);
+        reservations_[key] = Reservation{
+            request.account_id, request.side, request.quantity, reserved_order_margin};
         auto &state = account_states_[request.account_id][request.instrument_id];
         state.open_order_quantity += request.quantity;
+        state.reserved_margin += reserved_order_margin;
         if (request.side == api::Side::buy)
         {
             state.buy_reserved_quantity += request.quantity;
@@ -89,6 +133,14 @@ namespace exchange_core::risk
         {
             state.sell_reserved_quantity -= released_quantity;
         }
+        const auto released_margin = released_quantity == reservation->second.remaining_quantity
+            ? reservation->second.reserved_margin
+            : proportional_release(
+                reservation->second.reserved_margin,
+                released_quantity,
+                reservation->second.remaining_quantity);
+        state.reserved_margin -= released_margin;
+        reservation->second.reserved_margin -= released_margin;
         reservation->second.remaining_quantity -= released_quantity;
         if (reservation->second.remaining_quantity == 0)
         {
@@ -113,14 +165,19 @@ namespace exchange_core::risk
     }
 
     void AccountRiskManager::apply(
-        const api::PlaceOrder &request, const std::vector<api::EngineEvent> &events)
+        const api::PlaceOrder &request,
+        const std::vector<api::EngineEvent> &events,
+        bool reservation_created)
     {
         const OrderKey incoming_key{request.instrument_id, request.order_id};
         for (const auto &event : events)
         {
             if (const auto *trade = std::get_if<api::TradeExecuted>(&event))
             {
-                release(incoming_key, trade->execution_quantity);
+                if (reservation_created)
+                {
+                    release(incoming_key, trade->execution_quantity);
+                }
                 update_position(request.account_id, request.instrument_id,
                     request.side, trade->execution_quantity);
 
@@ -143,13 +200,17 @@ namespace exchange_core::risk
             }
             else if (std::holds_alternative<api::OrderRejected>(event))
             {
-                release(incoming_key, request.quantity);
+                if (reservation_created)
+                {
+                    release(incoming_key, request.quantity);
+                }
             }
         }
 
-        if (request.order_type == api::OrderType::ioc ||
+        if (reservation_created &&
+            (request.order_type == api::OrderType::ioc ||
             request.order_type == api::OrderType::market ||
-            request.order_type == api::OrderType::fok)
+            request.order_type == api::OrderType::fok))
         {
             release(incoming_key, request.quantity);
         }
@@ -172,6 +233,21 @@ namespace exchange_core::risk
         for (const auto &entry : account->second)
         {
             total += entry.second.open_order_quantity;
+        }
+        return total;
+    }
+
+    api::Quantity AccountRiskManager::reserved_margin(api::AccountId account_id) const
+    {
+        api::Quantity total{};
+        const auto account = account_states_.find(account_id);
+        if (account == account_states_.end())
+        {
+            return total;
+        }
+        for (const auto &entry : account->second)
+        {
+            total += entry.second.reserved_margin;
         }
         return total;
     }

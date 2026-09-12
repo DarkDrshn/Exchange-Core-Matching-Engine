@@ -29,11 +29,13 @@ infrastructure and does not connect to live exchanges or handle real funds.
     limits before requests reach the order book.
 - Account-aware position limits, open-order reservations, ownership-safe cancellation,
   and signed position updates from executions.
+- Integer credit and initial-margin reservations with release after fills, cancels,
+  rejects, and non-resting orders.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
 
-- Position accounting and portfolio-aware risk checks.
+- Portfolio-aware risk checks and reference-price validation.
 - Market-data publication.
 - Event journaling, snapshots, and replay.
 - Metrics, CLI tooling, load testing, and GitHub Actions expansion.
@@ -144,6 +146,11 @@ mutated.
 Day 11 verification covers account identity, directional position limits, live
 open-order reservations, reservation release after matching, and account ownership
 checks on cancellation.
+
+Day 12 verification covers account credit limits, configurable initial-margin basis
+points, credit rejection without book mutation, and exact margin release after
+cancellations and executions. Market orders reserve against the configured maximum
+order notional because no reference market price is available yet.
 
 ## Development Rules
 

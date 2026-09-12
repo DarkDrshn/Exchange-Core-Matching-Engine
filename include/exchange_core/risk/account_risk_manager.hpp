@@ -15,6 +15,7 @@ namespace exchange_core::risk
         none,
         position_limit,
         open_order_limit,
+        credit_limit,
     };
 
     class AccountRiskManager
@@ -27,11 +28,15 @@ namespace exchange_core::risk
 
         [[nodiscard]] AccountRejectReason evaluate(const api::PlaceOrder &request) const;
         void reserve(const api::PlaceOrder &request);
-        void apply(const api::PlaceOrder &request, const std::vector<api::EngineEvent> &events);
+        void apply(
+            const api::PlaceOrder &request,
+            const std::vector<api::EngineEvent> &events,
+            bool reservation_created);
 
         [[nodiscard]] std::int64_t position(
             api::AccountId account_id, domain::InstrumentId instrument_id) const;
         [[nodiscard]] api::Quantity open_order_quantity(api::AccountId account_id) const;
+        [[nodiscard]] api::Quantity reserved_margin(api::AccountId account_id) const;
 
     private:
         struct OrderKey
@@ -60,6 +65,7 @@ namespace exchange_core::risk
             api::AccountId account_id{};
             api::Side side{};
             api::Quantity remaining_quantity{};
+            api::Quantity reserved_margin{};
         };
 
         struct AccountState
@@ -68,6 +74,7 @@ namespace exchange_core::risk
             api::Quantity open_order_quantity{};
             api::Quantity buy_reserved_quantity{};
             api::Quantity sell_reserved_quantity{};
+            api::Quantity reserved_margin{};
         };
 
         [[nodiscard]] AccountState state_for(
@@ -76,6 +83,8 @@ namespace exchange_core::risk
             api::AccountId account_id, domain::InstrumentId instrument_id,
             api::Side side, api::Quantity quantity);
         void release(OrderKey key, api::Quantity quantity);
+        [[nodiscard]] api::Quantity margin_for(
+            const api::PlaceOrder &request) const;
 
         engine::EngineConfig configuration_;
         std::unordered_map<api::AccountId,

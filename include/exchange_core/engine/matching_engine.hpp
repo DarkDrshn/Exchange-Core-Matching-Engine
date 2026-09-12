@@ -40,6 +40,8 @@ namespace exchange_core::engine
             api::AccountId account_id, domain::InstrumentId instrument_id) const;
         [[nodiscard]] api::Quantity account_open_order_quantity(
             api::AccountId account_id) const;
+        [[nodiscard]] api::Quantity account_reserved_margin(
+            api::AccountId account_id) const;
 
     private:
         struct Impl;
