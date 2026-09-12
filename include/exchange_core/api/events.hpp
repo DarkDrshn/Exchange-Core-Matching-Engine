@@ -17,6 +17,9 @@ namespace exchange_core::api
         unknown_instrument,
         post_only_rejected,
         fok_not_filled,
+        risk_quantity_limit,
+        risk_notional_limit,
+        risk_fat_finger_limit,
     };
 
     struct OrderAccepted

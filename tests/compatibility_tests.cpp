@@ -224,18 +224,22 @@ namespace
 
     void applies_engine_limits_at_the_api_boundary()
     {
-        MatchingEngine engine(EngineConfig{100, 5});
+        MatchingEngine engine(EngineConfig{100, 10, 500});
         register_primary_instrument(engine);
 
         const auto price_rejected = engine.place_order(PlaceOrder{1, 601, Side::buy, 101, 1});
         require(std::get<OrderRejected>(event_at(price_rejected, 0)).reason ==
-            RejectReason::invalid_order);
+            RejectReason::risk_fat_finger_limit);
 
-        const auto quantity_rejected = engine.place_order(PlaceOrder{1, 602, Side::buy, 100, 6});
+        const auto quantity_rejected = engine.place_order(PlaceOrder{1, 602, Side::buy, 100, 11});
         require(std::get<OrderRejected>(event_at(quantity_rejected, 0)).reason ==
-            RejectReason::invalid_order);
+            RejectReason::risk_quantity_limit);
 
-        const auto accepted = engine.place_order(PlaceOrder{1, 603, Side::buy, 100, 5});
+        const auto notional_rejected = engine.place_order(PlaceOrder{1, 603, Side::buy, 100, 6});
+        require(std::get<OrderRejected>(event_at(notional_rejected, 0)).reason ==
+            RejectReason::risk_notional_limit);
+
+        const auto accepted = engine.place_order(PlaceOrder{1, 604, Side::buy, 100, 5});
         require(std::holds_alternative<OrderAccepted>(event_at(accepted, 0)));
     }
 

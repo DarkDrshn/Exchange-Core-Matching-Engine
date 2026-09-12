@@ -1,4 +1,5 @@
 #include "exchange_core/engine/matching_engine.hpp"
+#include "exchange_core/risk/risk_manager.hpp"
 
 #include "domain/order_book.hpp"
 
@@ -13,10 +14,12 @@ namespace exchange_core::engine
         api::IEventSink *event_sink;
         domain::InstrumentRegistry instruments;
         std::unordered_map<domain::InstrumentId, domain::OrderBook> order_books;
+        risk::RiskManager risk_manager;
     };
 
     MatchingEngine::MatchingEngine(EngineConfig configuration, api::IEventSink *event_sink)
-        : implementation_(std::make_unique<Impl>(Impl{configuration, event_sink, {}, {}}))
+        : implementation_(std::make_unique<Impl>(Impl{
+              configuration, event_sink, {}, {}, risk::RiskManager{configuration}}))
     {
     }
 
@@ -49,10 +52,8 @@ namespace exchange_core::engine
         const bool valid_market_price = request.order_type == api::OrderType::market &&
             request.price == 0;
         const bool valid_limit_price = request.order_type != api::OrderType::market &&
-            request.price > 0 &&
-            request.price <= implementation_->configuration.maximum_order_price;
-        if ((!valid_market_price && !valid_limit_price) || request.quantity == 0 ||
-            request.quantity > implementation_->configuration.maximum_order_quantity)
+            request.price > 0;
+        if ((!valid_market_price && !valid_limit_price) || request.quantity == 0)
         {
             const domain::Order rejected_order{
                 request.instrument_id,
@@ -66,6 +67,34 @@ namespace exchange_core::engine
             const EventBatch events = {api::OrderRejected{
                 rejected_order, request.instrument_id, request.order_id,
                 api::RejectReason::invalid_order}};
+            publish(events);
+            return events;
+        }
+
+        const auto risk_rejection = implementation_->risk_manager.evaluate(request);
+        if (risk_rejection != risk::RejectReason::none)
+        {
+            api::RejectReason reason = api::RejectReason::risk_quantity_limit;
+            if (risk_rejection == risk::RejectReason::notional_limit)
+            {
+                reason = api::RejectReason::risk_notional_limit;
+            }
+            else if (risk_rejection == risk::RejectReason::fat_finger_limit)
+            {
+                reason = api::RejectReason::risk_fat_finger_limit;
+            }
+
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                request.side,
+                domain::Price{request.price},
+                domain::Quantity{request.quantity},
+                domain::Quantity{request.quantity},
+                domain::OrderStatus::rejected,
+                request.order_type};
+            const EventBatch events = {api::OrderRejected{
+                rejected_order, request.instrument_id, request.order_id, reason}};
             publish(events);
             return events;
         }

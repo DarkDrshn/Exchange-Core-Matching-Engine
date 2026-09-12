@@ -25,11 +25,13 @@ infrastructure and does not connect to live exchanges or handle real funds.
     `OrderType::post_only` semantics.
 - Market orders sweep available levels without resting, while FOK orders preflight
     liquidity and reject atomically when the requested quantity is unavailable.
+- Pre-trade risk checks for maximum quantity, integer notional, and fat-finger price
+    limits before requests reach the order book.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
 
-- Risk checks and position accounting.
+- Position accounting and portfolio-aware risk checks.
 - Market-data publication.
 - Event journaling, snapshots, and replay.
 - Metrics, CLI tooling, load testing, and GitHub Actions expansion.
@@ -123,13 +125,19 @@ Orders return a batch of events. An optional `IEventSink` can receive the same e
 after the complete book mutation has finished, so event consumers can safely call
 back into the engine.
 
-The engine accepts optional limits through `EngineConfig`:
+The engine accepts optional quantity, price, and notional limits through `EngineConfig`:
 
 ```cpp
-exchange_core::engine::MatchingEngine engine({100000, 1000});
+exchange_core::engine::MatchingEngine engine({100000, 1000, 10000000});
 ```
 
-Requests outside those limits are rejected before they reach the order book.
+Requests outside those limits are rejected before they reach the order book. Market
+orders are quantity-limited; notional checks require a priced order because this
+engine does not yet provide a reference market price.
+
+Day 10 verification covers quantity-limit, notional-limit, and fat-finger-limit
+rejections. Risk failures emit explicit rejection reasons before the order book is
+mutated.
 
 ## Development Rules
 
