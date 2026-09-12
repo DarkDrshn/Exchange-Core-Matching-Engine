@@ -36,6 +36,10 @@ namespace exchange_core::engine
         // cppcheck-suppress syntaxError
         [[nodiscard]] bool contains_order(
             domain::InstrumentId instrument_id, api::OrderId order_id) const;
+        [[nodiscard]] std::int64_t account_position(
+            api::AccountId account_id, domain::InstrumentId instrument_id) const;
+        [[nodiscard]] api::Quantity account_open_order_quantity(
+            api::AccountId account_id) const;
 
     private:
         struct Impl;

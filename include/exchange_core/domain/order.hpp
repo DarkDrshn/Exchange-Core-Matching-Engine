@@ -28,6 +28,7 @@ namespace exchange_core::domain
         Quantity remaining_quantity{0};
         OrderStatus status{OrderStatus::new_order};
         api::OrderType order_type{api::OrderType::limit};
+        api::AccountId account_id{};
     };
 
     struct Trade
@@ -38,5 +39,7 @@ namespace exchange_core::domain
         api::OrderId resting_order_id{};
         Price execution_price{0};
         Quantity execution_quantity{0};
+        api::AccountId incoming_account_id{};
+        api::AccountId resting_account_id{};
     };
 }

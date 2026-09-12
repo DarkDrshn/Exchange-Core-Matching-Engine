@@ -20,6 +20,9 @@ namespace exchange_core::api
         risk_quantity_limit,
         risk_notional_limit,
         risk_fat_finger_limit,
+        risk_position_limit,
+        risk_open_order_limit,
+        unauthorized_order,
     };
 
     struct OrderAccepted

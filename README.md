@@ -27,6 +27,8 @@ infrastructure and does not connect to live exchanges or handle real funds.
     liquidity and reject atomically when the requested quantity is unavailable.
 - Pre-trade risk checks for maximum quantity, integer notional, and fat-finger price
     limits before requests reach the order book.
+- Account-aware position limits, open-order reservations, ownership-safe cancellation,
+  and signed position updates from executions.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
@@ -138,6 +140,10 @@ engine does not yet provide a reference market price.
 Day 10 verification covers quantity-limit, notional-limit, and fat-finger-limit
 rejections. Risk failures emit explicit rejection reasons before the order book is
 mutated.
+
+Day 11 verification covers account identity, directional position limits, live
+open-order reservations, reservation release after matching, and account ownership
+checks on cancellation.
 
 ## Development Rules
 

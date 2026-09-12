@@ -1,5 +1,6 @@
 #include "exchange_core/engine/matching_engine.hpp"
 #include "exchange_core/risk/risk_manager.hpp"
+#include "exchange_core/risk/account_risk_manager.hpp"
 
 #include "domain/order_book.hpp"
 
@@ -15,11 +16,13 @@ namespace exchange_core::engine
         domain::InstrumentRegistry instruments;
         std::unordered_map<domain::InstrumentId, domain::OrderBook> order_books;
         risk::RiskManager risk_manager;
+        risk::AccountRiskManager account_risk_manager;
     };
 
     MatchingEngine::MatchingEngine(EngineConfig configuration, api::IEventSink *event_sink)
         : implementation_(std::make_unique<Impl>(Impl{
-              configuration, event_sink, {}, {}, risk::RiskManager{configuration}}))
+              configuration, event_sink, {}, {}, risk::RiskManager{configuration},
+              risk::AccountRiskManager{configuration}}))
     {
     }
 
@@ -42,7 +45,8 @@ namespace exchange_core::engine
                 domain::Quantity{0},
                 domain::Quantity{0},
                 domain::OrderStatus::rejected,
-                request.order_type};
+                    request.order_type,
+                    request.account_id};
             const EventBatch events = {api::OrderRejected{
                 rejected_order, request.instrument_id, request.order_id,
                 api::RejectReason::unknown_instrument}};
@@ -63,7 +67,8 @@ namespace exchange_core::engine
                 domain::Quantity{0},
                 domain::Quantity{0},
                 domain::OrderStatus::rejected,
-                request.order_type};
+                    request.order_type,
+                    request.account_id};
             const EventBatch events = {api::OrderRejected{
                 rejected_order, request.instrument_id, request.order_id,
                 api::RejectReason::invalid_order}};
@@ -99,6 +104,36 @@ namespace exchange_core::engine
             return events;
         }
 
+        const bool duplicate_order = contains_order(request.instrument_id, request.order_id);
+        const auto account_rejection = duplicate_order
+            ? risk::AccountRejectReason::none
+            : implementation_->account_risk_manager.evaluate(request);
+        if (account_rejection != risk::AccountRejectReason::none)
+        {
+            const auto reason = account_rejection == risk::AccountRejectReason::position_limit
+                ? api::RejectReason::risk_position_limit
+                : api::RejectReason::risk_open_order_limit;
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                request.side,
+                domain::Price{request.price},
+                domain::Quantity{request.quantity},
+                domain::Quantity{request.quantity},
+                domain::OrderStatus::rejected,
+                request.order_type,
+                request.account_id};
+            const EventBatch events = {api::OrderRejected{
+                rejected_order, request.instrument_id, request.order_id, reason}};
+            publish(events);
+            return events;
+        }
+
+        if (!duplicate_order)
+        {
+            implementation_->account_risk_manager.reserve(request);
+        }
+
         const domain::Order order{
             request.instrument_id,
             request.order_id,
@@ -107,9 +142,11 @@ namespace exchange_core::engine
             domain::Quantity{request.quantity},
             domain::Quantity{request.quantity},
             domain::OrderStatus::new_order,
-            request.order_type};
+            request.order_type,
+            request.account_id};
         const EventBatch events = implementation_->order_books.at(request.instrument_id)
             .place_order(order);
+        implementation_->account_risk_manager.apply(request, events);
         publish(events);
         return events;
     }
@@ -135,6 +172,15 @@ namespace exchange_core::engine
         }
         const EventBatch events = implementation_->order_books.at(request.instrument_id)
             .cancel_order(request);
+        const api::PlaceOrder account_context{
+            request.instrument_id,
+            request.order_id,
+            api::Side::buy,
+            0,
+            0,
+            api::OrderType::limit,
+            request.account_id};
+        implementation_->account_risk_manager.apply(account_context, events);
         publish(events);
         return events;
     }
@@ -163,6 +209,17 @@ namespace exchange_core::engine
         const auto order_book = implementation_->order_books.find(instrument_id);
         return order_book != implementation_->order_books.end() &&
                order_book->second.contains_order(order_id);
+    }
+
+    std::int64_t MatchingEngine::account_position(
+        api::AccountId account_id, domain::InstrumentId instrument_id) const
+    {
+        return implementation_->account_risk_manager.position(account_id, instrument_id);
+    }
+
+    api::Quantity MatchingEngine::account_open_order_quantity(api::AccountId account_id) const
+    {
+        return implementation_->account_risk_manager.open_order_quantity(account_id);
     }
 
     void MatchingEngine::publish(const EventBatch &events) const

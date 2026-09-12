@@ -28,12 +28,14 @@ namespace exchange_core::domain
             api::OrderId order_id{};
             Quantity remaining_quantity{0};
             api::OrderType order_type{api::OrderType::limit};
+            api::AccountId account_id{};
         };
 
         struct OrderLocation
         {
             api::Side side{};
             Price price{0};
+            api::AccountId account_id{};
         };
 
         using BuyLevels = std::map<Price, std::deque<RestingOrder>, std::greater<>>;

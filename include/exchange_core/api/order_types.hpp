@@ -22,6 +22,7 @@ namespace exchange_core::api
     };
 
     using OrderId = std::uint64_t;
+    using AccountId = std::uint64_t;
     using Price = std::int64_t;
     using Quantity = std::uint64_t;
 
@@ -33,12 +34,14 @@ namespace exchange_core::api
         Price price{};
         Quantity quantity{};
         OrderType order_type{OrderType::limit};
+        AccountId account_id{};
     };
 
     struct CancelOrder
     {
         domain::InstrumentId instrument_id{};
         OrderId order_id{};
+        AccountId account_id{};
     };
 
 } // namespace exchange_core::api

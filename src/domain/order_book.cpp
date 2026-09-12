@@ -14,7 +14,8 @@ namespace exchange_core::domain
             order.quantity,
             order.quantity,
             domain::OrderStatus::rejected,
-            order.order_type};
+            order.order_type,
+            order.account_id};
 
         return {api::OrderRejected{rejected_order, order.instrument_id, order.order_id, reason}};
     }
@@ -73,7 +74,9 @@ namespace exchange_core::domain
                         order.order_id,
                         resting_order.order_id,
                         best_level->first,
-                        executed_quantity};
+                        executed_quantity,
+                        order.account_id,
+                        resting_order.account_id};
                     events.emplace_back(api::TradeExecuted{
                         trade,
                         order.instrument_id,
@@ -116,7 +119,9 @@ namespace exchange_core::domain
                         order.order_id,
                         resting_order.order_id,
                         best_level->first,
-                        executed_quantity};
+                        executed_quantity,
+                        order.account_id,
+                        resting_order.account_id};
                     events.emplace_back(api::TradeExecuted{
                         trade,
                         order.instrument_id,
@@ -146,17 +151,19 @@ namespace exchange_core::domain
 
         if (remaining_quantity > Quantity{0})
         {
-            const OrderLocation location{order.side, order.price};
+            const OrderLocation location{order.side, order.price, order.account_id};
             order_locations_.emplace(order.order_id, location);
             if (order.side == api::Side::buy)
             {
                 buy_levels_[order.price].push_back(
-                    RestingOrder{order.order_id, remaining_quantity, order.order_type});
+                    RestingOrder{order.order_id, remaining_quantity, order.order_type,
+                        order.account_id});
             }
             else
             {
                 sell_levels_[order.price].push_back(
-                    RestingOrder{order.order_id, remaining_quantity, order.order_type});
+                    RestingOrder{order.order_id, remaining_quantity, order.order_type,
+                        order.account_id});
             }
         }
 
@@ -229,6 +236,22 @@ namespace exchange_core::domain
                 api::RejectReason::unknown_order_id}};
         }
 
+        if (request.account_id != location->second.account_id)
+        {
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                location->second.side,
+                location->second.price,
+                Quantity{0},
+                Quantity{0},
+                domain::OrderStatus::rejected,
+                api::OrderType::limit,
+                location->second.account_id};
+            return {api::OrderRejected{rejected_order, request.instrument_id, request.order_id,
+                api::RejectReason::unauthorized_order}};
+        }
+
         api::OrderType order_type{api::OrderType::limit};
         if (location->second.side == api::Side::buy)
         {
@@ -271,7 +294,8 @@ namespace exchange_core::domain
             Quantity{0},
             Quantity{0},
             domain::OrderStatus::canceled,
-            order_type};
+            order_type,
+            request.account_id};
         return {api::OrderCanceled{canceled_order, request.instrument_id, request.order_id}};
     }
 

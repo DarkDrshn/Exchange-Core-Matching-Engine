@@ -30,6 +30,7 @@ add_library(exchange_core STATIC
     src/domain/instrument_registry.cpp
     src/domain/order_book.cpp
     src/engine/matching_engine.cpp
+    src/risk/account_risk_manager.cpp
     src/risk/risk_manager.cpp
 )
 
