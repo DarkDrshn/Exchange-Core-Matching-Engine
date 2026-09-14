@@ -31,6 +31,8 @@ infrastructure and does not connect to live exchanges or handle real funds.
   and signed position updates from executions.
 - Integer credit and initial-margin reservations with release after fills, cancels,
   rejects, and non-resting orders.
+- `OrderGateway` client registration, account binding, and strict request sequencing
+    before commands reach the matching engine.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
@@ -151,6 +153,12 @@ Day 12 verification covers account credit limits, configurable initial-margin ba
 points, credit rejection without book mutation, and exact margin release after
 cancellations and executions. Market orders reserve against the configured maximum
 order notional because no reference market price is available yet.
+
+Day 13 verification covers gateway client identity, account authorization, strict
+per-client request sequencing, unknown-client rejection, and forwarding of admitted
+commands to the matching engine. Gateway-level identity and sequence failures do not
+advance the client sequence; admitted commands advance it even when the engine later
+rejects the order.
 
 ## Development Rules
 

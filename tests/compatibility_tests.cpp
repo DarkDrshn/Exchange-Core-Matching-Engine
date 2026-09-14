@@ -1,4 +1,5 @@
 #include "exchange_core/engine/matching_engine.hpp"
+#include "exchange_core/gateway/order_gateway.hpp"
 
 #include <cstdlib>
 #include <variant>
@@ -25,6 +26,9 @@ namespace
     using exchange_core::domain::Trade;
     using exchange_core::engine::EngineConfig;
     using exchange_core::engine::MatchingEngine;
+    using exchange_core::gateway::CancelOrderCommand;
+    using exchange_core::gateway::OrderGateway;
+    using exchange_core::gateway::PlaceOrderCommand;
 
     constexpr exchange_core::domain::InstrumentId primary_instrument_id = 1;
 
@@ -301,6 +305,53 @@ namespace
         require(engine.account_reserved_margin(92) == 0);
     }
 
+    void enforces_gateway_identity_and_request_sequences()
+    {
+        MatchingEngine engine;
+        register_primary_instrument(engine);
+        OrderGateway gateway(engine);
+        require(gateway.register_client(501, 77));
+        require(gateway.next_sequence(501) == 1);
+
+        const auto accepted = gateway.place_order(
+            PlaceOrderCommand{501, 1, PlaceOrder{1, 1301, Side::buy, 100, 2,
+                OrderType::limit, 77}});
+        require(std::holds_alternative<OrderAccepted>(event_at(accepted, 0)));
+        require(gateway.next_sequence(501) == 2);
+
+        const auto repeated_sequence = gateway.place_order(
+            PlaceOrderCommand{501, 1, PlaceOrder{1, 1302, Side::buy, 100, 1,
+                OrderType::limit, 77}});
+        require(std::get<OrderRejected>(event_at(repeated_sequence, 0)).reason ==
+            RejectReason::invalid_request_sequence);
+        require(gateway.next_sequence(501) == 2);
+
+        const auto wrong_account = gateway.place_order(
+            PlaceOrderCommand{501, 2, PlaceOrder{1, 1303, Side::buy, 100, 1,
+                OrderType::limit, 88}});
+        require(std::get<OrderRejected>(event_at(wrong_account, 0)).reason ==
+            RejectReason::unauthorized_order);
+        require(gateway.next_sequence(501) == 2);
+
+        const auto invalid_engine_order = gateway.place_order(
+            PlaceOrderCommand{501, 2, PlaceOrder{1, 1304, Side::buy, 0, 1,
+                OrderType::limit, 77}});
+        require(std::get<OrderRejected>(event_at(invalid_engine_order, 0)).reason ==
+            RejectReason::invalid_order);
+        require(gateway.next_sequence(501) == 3);
+
+        const auto canceled = gateway.cancel_order(
+            CancelOrderCommand{501, 3, CancelOrder{1, 1301, 77}});
+        require(std::holds_alternative<OrderCanceled>(event_at(canceled, 0)));
+        require(gateway.next_sequence(501) == 4);
+
+        const auto unknown_client = gateway.place_order(
+            PlaceOrderCommand{999, 1, PlaceOrder{1, 1305, Side::buy, 100, 1,
+                OrderType::limit, 77}});
+        require(std::get<OrderRejected>(event_at(unknown_client, 0)).reason ==
+            RejectReason::unknown_client);
+    }
+
     void publishes_events_after_mutation_to_a_reentrant_sink()
     {
         ReentrantEventSink sink;
@@ -357,6 +408,7 @@ int main()
     applies_engine_limits_at_the_api_boundary();
     tracks_account_reservations_positions_and_ownership();
     applies_credit_limits_and_releases_margin_reservations();
+    enforces_gateway_identity_and_request_sequences();
     publishes_events_after_mutation_to_a_reentrant_sink();
     isolates_identical_order_ids_between_instruments();
     rejects_unknown_instruments();

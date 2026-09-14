@@ -24,6 +24,8 @@ namespace exchange_core::api
         risk_open_order_limit,
         unauthorized_order,
         risk_credit_limit,
+        unknown_client,
+        invalid_request_sequence,
     };
 
     struct OrderAccepted
