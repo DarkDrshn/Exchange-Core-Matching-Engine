@@ -14,7 +14,8 @@ namespace exchange_core::domain
             order.quantity,
             order.quantity,
             domain::OrderStatus::rejected,
-            order.order_type};
+            order.order_type,
+            order.account_id};
 
         return {api::OrderRejected{rejected_order, order.instrument_id, order.order_id, reason}};
     }
@@ -24,6 +25,11 @@ namespace exchange_core::domain
         if (order_locations_.find(order.order_id) != order_locations_.end())
         {
             return reject(order, api::RejectReason::duplicate_order_id);
+        }
+
+        if (order.order_type == api::OrderType::fok && !can_fully_match(order))
+        {
+            return reject(order, api::RejectReason::fok_not_filled);
         }
 
         if (order.order_type == api::OrderType::post_only)
@@ -50,7 +56,8 @@ namespace exchange_core::domain
             while (remaining_quantity > Quantity{0} && !sell_levels_.empty())
             {
                 auto best_level = sell_levels_.begin();
-                if (order.price < best_level->first)
+                if (order.order_type != api::OrderType::market &&
+                    order.price < best_level->first)
                 {
                     break;
                 }
@@ -67,7 +74,9 @@ namespace exchange_core::domain
                         order.order_id,
                         resting_order.order_id,
                         best_level->first,
-                        executed_quantity};
+                        executed_quantity,
+                        order.account_id,
+                        resting_order.account_id};
                     events.emplace_back(api::TradeExecuted{
                         trade,
                         order.instrument_id,
@@ -92,7 +101,8 @@ namespace exchange_core::domain
             while (remaining_quantity > Quantity{0} && !buy_levels_.empty())
             {
                 auto best_level = buy_levels_.begin();
-                if (order.price > best_level->first)
+                if (order.order_type != api::OrderType::market &&
+                    order.price > best_level->first)
                 {
                     break;
                 }
@@ -109,7 +119,9 @@ namespace exchange_core::domain
                         order.order_id,
                         resting_order.order_id,
                         best_level->first,
-                        executed_quantity};
+                        executed_quantity,
+                        order.account_id,
+                        resting_order.account_id};
                     events.emplace_back(api::TradeExecuted{
                         trade,
                         order.instrument_id,
@@ -130,28 +142,80 @@ namespace exchange_core::domain
             }
         }
 
-        if (order.order_type == api::OrderType::ioc)
+        if (order.order_type == api::OrderType::ioc ||
+            order.order_type == api::OrderType::fok ||
+            order.order_type == api::OrderType::market)
         {
             return events;
         }
 
         if (remaining_quantity > Quantity{0})
         {
-            const OrderLocation location{order.side, order.price};
+            const OrderLocation location{order.side, order.price, order.account_id};
             order_locations_.emplace(order.order_id, location);
             if (order.side == api::Side::buy)
             {
                 buy_levels_[order.price].push_back(
-                    RestingOrder{order.order_id, remaining_quantity, order.order_type});
+                    RestingOrder{order.order_id, remaining_quantity, order.order_type,
+                        order.account_id});
             }
             else
             {
                 sell_levels_[order.price].push_back(
-                    RestingOrder{order.order_id, remaining_quantity, order.order_type});
+                    RestingOrder{order.order_id, remaining_quantity, order.order_type,
+                        order.account_id});
             }
         }
 
         return events;
+    }
+
+    bool OrderBook::can_fully_match(const Order &order) const
+    {
+        Quantity remaining_quantity = order.quantity;
+
+        if (order.side == api::Side::buy)
+        {
+            for (const auto &level : sell_levels_)
+            {
+                if (order.order_type != api::OrderType::market &&
+                    order.price < level.first)
+                {
+                    break;
+                }
+                for (const auto &resting_order : level.second)
+                {
+                    if (resting_order.remaining_quantity > remaining_quantity ||
+                        resting_order.remaining_quantity == remaining_quantity)
+                    {
+                        return true;
+                    }
+                    remaining_quantity -= resting_order.remaining_quantity;
+                }
+            }
+        }
+        else
+        {
+            for (const auto &level : buy_levels_)
+            {
+                if (order.order_type != api::OrderType::market &&
+                    order.price > level.first)
+                {
+                    break;
+                }
+                for (const auto &resting_order : level.second)
+                {
+                    if (resting_order.remaining_quantity > remaining_quantity ||
+                        resting_order.remaining_quantity == remaining_quantity)
+                    {
+                        return true;
+                    }
+                    remaining_quantity -= resting_order.remaining_quantity;
+                }
+            }
+        }
+
+        return false;
     }
 
     OrderBook::EventBatch OrderBook::cancel_order(const api::CancelOrder &request)
@@ -170,6 +234,22 @@ namespace exchange_core::domain
                 api::OrderType::limit};
             return {api::OrderRejected{rejected_order, request.instrument_id, request.order_id,
                 api::RejectReason::unknown_order_id}};
+        }
+
+        if (request.account_id != location->second.account_id)
+        {
+            const domain::Order rejected_order{
+                request.instrument_id,
+                request.order_id,
+                location->second.side,
+                location->second.price,
+                Quantity{0},
+                Quantity{0},
+                domain::OrderStatus::rejected,
+                api::OrderType::limit,
+                location->second.account_id};
+            return {api::OrderRejected{rejected_order, request.instrument_id, request.order_id,
+                api::RejectReason::unauthorized_order}};
         }
 
         api::OrderType order_type{api::OrderType::limit};
@@ -214,7 +294,8 @@ namespace exchange_core::domain
             Quantity{0},
             Quantity{0},
             domain::OrderStatus::canceled,
-            order_type};
+            order_type,
+            request.account_id};
         return {api::OrderCanceled{canceled_order, request.instrument_id, request.order_id}};
     }
 

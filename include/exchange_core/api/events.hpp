@@ -16,6 +16,17 @@ namespace exchange_core::api
         unknown_order_id,
         unknown_instrument,
         post_only_rejected,
+        fok_not_filled,
+        risk_quantity_limit,
+        risk_notional_limit,
+        risk_fat_finger_limit,
+        risk_position_limit,
+        risk_open_order_limit,
+        unauthorized_order,
+        risk_credit_limit,
+        risk_reference_price_unavailable,
+        unknown_client,
+        invalid_request_sequence,
     };
 
     struct OrderAccepted

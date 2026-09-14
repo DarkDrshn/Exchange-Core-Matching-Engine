@@ -21,13 +21,25 @@ infrastructure and does not connect to live exchanges or handle real funds.
 - Optional event-sink delivery after each completed state mutation.
 - Instrument registry with isolated order books and instrument-aware events.
 - Explicit `Order`, `Trade`, `OrderStatus`, and `ExecutionId` lifecycle models.
-- `OrderType::limit`, `OrderType::ioc`, and `OrderType::post_only` semantics.
+- `OrderType::limit`, `OrderType::market`, `OrderType::ioc`, `OrderType::fok`, and
+    `OrderType::post_only` semantics.
+- Market orders sweep available levels without resting, while FOK orders preflight
+    liquidity and reject atomically when the requested quantity is unavailable.
+- Pre-trade risk checks for maximum quantity, integer notional, and fat-finger price
+    limits before requests reach the order book.
+- Account-aware position limits, open-order reservations, ownership-safe cancellation,
+  and signed position updates from executions.
+- Integer credit and initial-margin reservations with release after fills, cancels,
+  rejects, and non-resting orders.
+- `OrderGateway` client registration, account binding, and strict request sequencing
+    before commands reach the matching engine.
+- Per-instrument reference-price bands with dedicated fat-finger validation before
+    valid priced orders reach the matching engine.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
 
-- Market and FOK order behavior.
-- Risk checks and position accounting.
+- Portfolio-aware risk checks and reference-price validation.
 - Market-data publication.
 - Event journaling, snapshots, and replay.
 - Metrics, CLI tooling, load testing, and GitHub Actions expansion.
@@ -84,6 +96,10 @@ reports:
 1/1 exchange_core_compatibility
 ```
 
+Verification covers multi-level market-order sweeps, non-resting market
+orders, successful FOK execution, and atomic FOK rejection when liquidity is
+insufficient.
+
 The `build/` directory contains generated files and is excluded from Git.
 
 ## Public API Example
@@ -117,13 +133,39 @@ Orders return a batch of events. An optional `IEventSink` can receive the same e
 after the complete book mutation has finished, so event consumers can safely call
 back into the engine.
 
-The engine accepts optional limits through `EngineConfig`:
+The engine accepts optional quantity, price, and notional limits through `EngineConfig`:
 
 ```cpp
-exchange_core::engine::MatchingEngine engine({100000, 1000});
+exchange_core::engine::MatchingEngine engine({100000, 1000, 10000000});
 ```
 
-Requests outside those limits are rejected before they reach the order book.
+Requests outside those limits are rejected before they reach the order book. Market
+orders are quantity-limited; notional checks require a priced order because this
+engine does not yet provide a reference market price.
+
+Verification covers quantity-limit, notional-limit, and fat-finger-limit
+rejections. Risk failures emit explicit rejection reasons before the order book is
+mutated.
+
+Verification covers account identity, directional position limits, live
+open-order reservations, reservation release after matching, and account ownership
+checks on cancellation.
+
+Verification covers account credit limits, configurable initial-margin basis
+points, credit rejection without book mutation, and exact margin release after
+cancellations and executions. Market orders reserve against the configured maximum
+order notional because no reference market price is available yet.
+
+Verification covers gateway client identity, account authorization, strict
+per-client request sequencing, unknown-client rejection, and forwarding of admitted
+commands to the matching engine. Gateway-level identity and sequence failures do not
+advance the client sequence; admitted commands advance it even when the engine later
+rejects the order.
+
+Verification covers per-instrument reference-price registration, configurable
+integer basis-point bands, missing-reference rejection, out-of-band rejection, and
+sequence preservation for gateway-level fat-finger failures. Malformed prices remain
+owned by the matching engine's structural validation.
 
 ## Development Rules
 
