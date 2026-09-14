@@ -24,6 +24,7 @@ namespace exchange_core::api
         risk_open_order_limit,
         unauthorized_order,
         risk_credit_limit,
+        risk_reference_price_unavailable,
         unknown_client,
         invalid_request_sequence,
     };

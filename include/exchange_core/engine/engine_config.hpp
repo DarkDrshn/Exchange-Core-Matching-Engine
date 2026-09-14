@@ -15,12 +15,14 @@ namespace exchange_core::engine
         api::Quantity maximum_open_order_quantity{std::numeric_limits<api::Quantity>::max()};
         api::Quantity maximum_account_credit{std::numeric_limits<api::Quantity>::max()};
         api::Quantity initial_margin_basis_points{10000};
+        api::Quantity maximum_reference_deviation_basis_points{1000};
 
         [[nodiscard]] constexpr bool is_valid() const
         {
                  return maximum_order_price > 0 && maximum_order_quantity > 0 &&
                        maximum_order_notional > 0 && maximum_account_credit > 0 &&
-                       initial_margin_basis_points <= 10000;
+                       initial_margin_basis_points <= 10000 &&
+                       maximum_reference_deviation_basis_points <= 10000;
         }
     };
 

@@ -33,6 +33,8 @@ infrastructure and does not connect to live exchanges or handle real funds.
   rejects, and non-resting orders.
 - `OrderGateway` client registration, account binding, and strict request sequencing
     before commands reach the matching engine.
+- Per-instrument reference-price bands with dedicated fat-finger validation before
+    valid priced orders reach the matching engine.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
@@ -94,7 +96,7 @@ reports:
 1/1 exchange_core_compatibility
 ```
 
-Day 9 verification covers multi-level market-order sweeps, non-resting market
+Verification covers multi-level market-order sweeps, non-resting market
 orders, successful FOK execution, and atomic FOK rejection when liquidity is
 insufficient.
 
@@ -141,24 +143,29 @@ Requests outside those limits are rejected before they reach the order book. Mar
 orders are quantity-limited; notional checks require a priced order because this
 engine does not yet provide a reference market price.
 
-Day 10 verification covers quantity-limit, notional-limit, and fat-finger-limit
+Verification covers quantity-limit, notional-limit, and fat-finger-limit
 rejections. Risk failures emit explicit rejection reasons before the order book is
 mutated.
 
-Day 11 verification covers account identity, directional position limits, live
+Verification covers account identity, directional position limits, live
 open-order reservations, reservation release after matching, and account ownership
 checks on cancellation.
 
-Day 12 verification covers account credit limits, configurable initial-margin basis
+Verification covers account credit limits, configurable initial-margin basis
 points, credit rejection without book mutation, and exact margin release after
 cancellations and executions. Market orders reserve against the configured maximum
 order notional because no reference market price is available yet.
 
-Day 13 verification covers gateway client identity, account authorization, strict
+Verification covers gateway client identity, account authorization, strict
 per-client request sequencing, unknown-client rejection, and forwarding of admitted
 commands to the matching engine. Gateway-level identity and sequence failures do not
 advance the client sequence; admitted commands advance it even when the engine later
 rejects the order.
+
+Verification covers per-instrument reference-price registration, configurable
+integer basis-point bands, missing-reference rejection, out-of-band rejection, and
+sequence preservation for gateway-level fat-finger failures. Malformed prices remain
+owned by the matching engine's structural validation.
 
 ## Development Rules
 

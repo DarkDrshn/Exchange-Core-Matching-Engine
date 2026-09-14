@@ -311,6 +311,15 @@ namespace
         register_primary_instrument(engine);
         OrderGateway gateway(engine);
         require(gateway.register_client(501, 77));
+        OrderGateway gateway_without_reference(engine);
+        require(gateway_without_reference.register_client(502, 77));
+        const auto missing_reference = gateway_without_reference.place_order(
+            PlaceOrderCommand{502, 1, PlaceOrder{1, 1300, Side::buy, 100, 1,
+                OrderType::limit, 77}});
+        require(std::get<OrderRejected>(event_at(missing_reference, 0)).reason ==
+            RejectReason::risk_reference_price_unavailable);
+        require(gateway_without_reference.next_sequence(502) == 1);
+        require(gateway.set_reference_price(1, 100));
         require(gateway.next_sequence(501) == 1);
 
         const auto accepted = gateway.place_order(
@@ -345,8 +354,15 @@ namespace
         require(std::holds_alternative<OrderCanceled>(event_at(canceled, 0)));
         require(gateway.next_sequence(501) == 4);
 
+        const auto fat_finger_rejected = gateway.place_order(
+            PlaceOrderCommand{501, 4, PlaceOrder{1, 1305, Side::buy, 120, 1,
+                OrderType::limit, 77}});
+        require(std::get<OrderRejected>(event_at(fat_finger_rejected, 0)).reason ==
+            RejectReason::risk_fat_finger_limit);
+        require(gateway.next_sequence(501) == 4);
+
         const auto unknown_client = gateway.place_order(
-            PlaceOrderCommand{999, 1, PlaceOrder{1, 1305, Side::buy, 100, 1,
+            PlaceOrderCommand{999, 1, PlaceOrder{1, 1306, Side::buy, 100, 1,
                 OrderType::limit, 77}});
         require(std::get<OrderRejected>(event_at(unknown_client, 0)).reason ==
             RejectReason::unknown_client);

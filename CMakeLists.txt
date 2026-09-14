@@ -32,6 +32,7 @@ add_library(exchange_core STATIC
     src/engine/matching_engine.cpp
     src/gateway/order_gateway.cpp
     src/risk/account_risk_manager.cpp
+    src/risk/fat_finger_validator.cpp
     src/risk/risk_manager.cpp
 )
 

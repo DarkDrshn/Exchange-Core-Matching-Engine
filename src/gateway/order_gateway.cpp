@@ -17,6 +17,17 @@ namespace exchange_core::gateway
         return clients_.erase(client_id) == 1;
     }
 
+    bool OrderGateway::set_reference_price(
+        domain::InstrumentId instrument_id, api::Price price)
+    {
+        if (instrument_id == 0 || price <= 0)
+        {
+            return false;
+        }
+        reference_prices_[instrument_id] = price;
+        return true;
+    }
+
     bool OrderGateway::authorize(
         ClientId client_id, RequestSequence sequence, api::AccountId account_id)
     {
@@ -79,6 +90,21 @@ namespace exchange_core::gateway
         if (command.sequence != client->second.next_sequence)
         {
             return reject(command.order, api::RejectReason::invalid_request_sequence);
+        }
+        const auto reference_price = reference_prices_.find(command.order.instrument_id);
+        const bool structurally_valid_price = command.order.order_type == api::OrderType::market ||
+            command.order.price > 0;
+        const auto fat_finger_result = structurally_valid_price
+            ? fat_finger_validator_.evaluate(
+                command.order,
+                reference_price == reference_prices_.end() ? 0 : reference_price->second)
+            : risk::FatFingerResult::accepted;
+        if (fat_finger_result != risk::FatFingerResult::accepted)
+        {
+            const auto reason = fat_finger_result == risk::FatFingerResult::reference_price_unavailable
+                ? api::RejectReason::risk_reference_price_unavailable
+                : api::RejectReason::risk_fat_finger_limit;
+            return reject(command.order, reason);
         }
         ++client->second.next_sequence;
         return matching_engine_.place_order(command.order);
