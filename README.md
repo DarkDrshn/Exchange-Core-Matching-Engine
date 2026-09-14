@@ -35,6 +35,8 @@ infrastructure and does not connect to live exchanges or handle real funds.
     before commands reach the matching engine.
 - Per-instrument reference-price bands with dedicated fat-finger validation before
     valid priced orders reach the matching engine.
+- Committed level-2 market-data updates with per-level aggregation and monotonic
+    publisher sequences.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The following features are planned for future releases:
@@ -166,6 +168,10 @@ Verification covers per-instrument reference-price registration, configurable
 integer basis-point bands, missing-reference rejection, out-of-band rejection, and
 sequence preservation for gateway-level fat-finger failures. Malformed prices remain
 owned by the matching engine's structural validation.
+
+Verification covers committed event-batch delivery, aggregated level-2 updates,
+trade decrements, cancellation removal, monotonic market-data sequences, and
+suppression of intermediate updates from partially processed command batches.
 
 ## Development Rules
 
