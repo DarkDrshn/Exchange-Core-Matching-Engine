@@ -27,11 +27,13 @@ else()
 endif()
 
 add_library(exchange_core STATIC
+    src/benchmark/benchmark.cpp
     src/domain/instrument_registry.cpp
     src/domain/order_book.cpp
     src/engine/matching_engine.cpp
     src/gateway/order_gateway.cpp
     src/market_data/market_data_publisher.cpp
+    src/metrics/metrics_collector.cpp
     src/risk/account_risk_manager.cpp
     src/risk/fat_finger_validator.cpp
     src/risk/risk_manager.cpp
@@ -54,3 +56,13 @@ add_executable(exchange_core_tests
 )
 target_link_libraries(exchange_core_tests PRIVATE exchange_core exchange_core_compile_options)
 add_test(NAME exchange_core_compatibility COMMAND exchange_core_tests)
+
+add_executable(exchange_core_bench
+    benchmarks/bench.cpp
+)
+target_link_libraries(exchange_core_bench PRIVATE exchange_core exchange_core_compile_options)
+
+add_executable(exchange_core_cli
+    src/adapters/cli.cpp
+)
+target_link_libraries(exchange_core_cli PRIVATE exchange_core exchange_core_compile_options)

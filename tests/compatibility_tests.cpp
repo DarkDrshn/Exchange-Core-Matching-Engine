@@ -1,6 +1,8 @@
+#include "exchange_core/benchmark/benchmark.hpp"
 #include "exchange_core/engine/matching_engine.hpp"
 #include "exchange_core/gateway/order_gateway.hpp"
 #include "exchange_core/market_data/market_data_publisher.hpp"
+#include "exchange_core/metrics/metrics_collector.hpp"
 
 #include <cstdlib>
 #include <variant>
@@ -471,6 +473,36 @@ namespace
             RejectReason::unknown_instrument);
     }
 
+    void records_metrics_from_event_sink()
+    {
+        exchange_core::metrics::MetricsCollector metrics;
+        MatchingEngine engine({}, &metrics);
+        register_primary_instrument(engine);
+
+        const auto bid = engine.place_order(PlaceOrder{1, 1501, Side::buy, 100, 10, OrderType::limit, 20});
+        const auto ask = engine.place_order(PlaceOrder{1, 1502, Side::sell, 100, 10, OrderType::limit, 21});
+
+        require(std::holds_alternative<OrderAccepted>(event_at(bid, 0)));
+        require(std::holds_alternative<OrderAccepted>(event_at(ask, 0)));
+        require(std::get<TradeExecuted>(event_at(ask, 1)).execution_quantity == 10U);
+
+        const auto snapshot = metrics.snapshot();
+        require(snapshot.events_seen == 3);
+        require(snapshot.accepted_orders == 2);
+        require(snapshot.trades_executed == 1);
+        require(snapshot.rejected_orders == 0);
+    }
+
+    void benchmark_reports_place_cancel_throughput()
+    {
+        const auto result = exchange_core::benchmark::run_place_cancel_benchmark(250);
+        require(result.iterations == 250);
+        require(result.operations == 500);
+        require(result.accepted_orders == 250);
+        require(result.canceled_orders == 250);
+        require(result.ops_per_second >= 0.0);
+    }
+
 } // namespace
 
 int main()
@@ -491,5 +523,7 @@ int main()
     publishes_events_after_mutation_to_a_reentrant_sink();
     isolates_identical_order_ids_between_instruments();
     rejects_unknown_instruments();
+    records_metrics_from_event_sink();
+    benchmark_reports_place_cancel_throughput();
     return 0;
 }
