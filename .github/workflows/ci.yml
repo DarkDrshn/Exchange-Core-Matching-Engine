@@ -27,5 +27,9 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
 
+      - name: Smoke benchmark
+        if: matrix.build_type == 'release'
+        run: ./build/${{ matrix.build_type }}/exchange_core_bench 1000
+
       - name: Check diff hygiene
         run: git diff --check

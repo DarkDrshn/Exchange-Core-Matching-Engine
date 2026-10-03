@@ -240,6 +240,13 @@ namespace exchange_core::engine
             return;
         }
 
+        if (auto *batch_sink = dynamic_cast<api::IEventBatchSink *>(
+                implementation_->event_sink))
+        {
+            batch_sink->on_events(events);
+            return;
+        }
+
         for (const auto &event : events)
         {
             implementation_->event_sink->on_event(event);

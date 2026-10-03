@@ -35,14 +35,25 @@ infrastructure and does not connect to live exchanges or handle real funds.
     before commands reach the matching engine.
 - Per-instrument reference-price bands with dedicated fat-finger validation before
     valid priced orders reach the matching engine.
+- Committed level-2 market-data updates with per-level aggregation and monotonic
+    publisher sequences.
+- `MetricsCollector` telemetry for accepted, rejected, trade, cancel, and latency
+    metrics with event-sink integration.
+- `exchange_core_bench` place/cancel benchmark harness and `exchange_core_cli`
+    adapter with `--benchmark`, `--stats`, and `--simulate` modes.
 
 The current implementation requires instruments to be registered before orders are
-accepted. The following features are planned for future releases:
+accepted. the first operational telemetry and tooling layer:
+
+- `MetricsCollector` for engine event counts and latency samples.
+- A deterministic place/cancel benchmark harness for throughput smoke tests.
+- A small CLI adapter for `--benchmark`, `--stats`, and `--simulate` usage.
+
+The following features remain planned for future releases:
 
 - Portfolio-aware risk checks and reference-price validation.
-- Market-data publication.
 - Event journaling, snapshots, and replay.
-- Metrics, CLI tooling, load testing, and GitHub Actions expansion.
+- Load testing, sanitizers, and broader benchmark reporting.
 
 Design notes and the longer-term roadmap are maintained in
 [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). Project goals and engineering guidelines
@@ -51,10 +62,26 @@ are documented in [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md).
 ## Repository Layout
 
 ```text
-include/exchange_core/   Stable public headers, domain types, and instrument registry
-src/domain/              Private order-book implementation
-src/engine/               Matching-engine facade and configuration
-tests/                   Compatibility tests
+include/exchange_core/
+  api/                   Public request, response, and sink contracts
+  benchmark/             Benchmark result model and throughput output helpers
+  domain/                Value objects, instruments, and order state
+  engine/                Matching engine and engine configuration
+  gateway/               Session and request-sequencing API
+  market_data/            Level-2 update contracts and publisher interfaces
+  metrics/               Telemetry snapshot and event counters
+  risk/                  Risk and validation contracts
+src/
+  adapters/              CLI adapters for local tooling and smoke checks
+  benchmark/             Deterministic benchmark workload implementations
+  domain/                Order-book implementation and core matching state
+  engine/                Matching-engine facade and event publication
+  gateway/               Session validation logic
+  market_data/           Market-data aggregation and event consumption
+  metrics/               Event-sink based metrics collection
+  risk/                  Pre-trade validation evaluation
+benchmarks/              Standalone benchmark executable for smoke testing
+tests/                  Compatibility and regression tests
 docs/                    Baselines and project documentation
 CMakeLists.txt           Build and test configuration
 ```
@@ -81,6 +108,20 @@ presets and stores generated files under `build/debug/` or `build/release/`.
 
 The build enables `-Wall`, `-Wextra`, `-Wpedantic`, `-Wconversion`, and
 `-Wsign-conversion` on GCC and Clang. Warnings are treated as errors by default.
+
+Run the benchmark smoke check:
+
+```bash
+./build/release/exchange_core_bench 1000
+```
+
+Run the CLI adapter:
+
+```bash
+./build/release/exchange_core_cli --benchmark 5000
+./build/release/exchange_core_cli --stats
+./build/release/exchange_core_cli --simulate
+```
 
 Run the tests:
 
@@ -166,6 +207,10 @@ Verification covers per-instrument reference-price registration, configurable
 integer basis-point bands, missing-reference rejection, out-of-band rejection, and
 sequence preservation for gateway-level fat-finger failures. Malformed prices remain
 owned by the matching engine's structural validation.
+
+Verification covers committed event-batch delivery, aggregated level-2 updates,
+trade decrements, cancellation removal, monotonic market-data sequences, and
+suppression of intermediate updates from partially processed command batches.
 
 ## Development Rules
 

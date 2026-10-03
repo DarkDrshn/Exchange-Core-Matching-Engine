@@ -1,5 +1,8 @@
+#include "exchange_core/benchmark/benchmark.hpp"
 #include "exchange_core/engine/matching_engine.hpp"
 #include "exchange_core/gateway/order_gateway.hpp"
+#include "exchange_core/market_data/market_data_publisher.hpp"
+#include "exchange_core/metrics/metrics_collector.hpp"
 
 #include <cstdlib>
 #include <variant>
@@ -29,6 +32,9 @@ namespace
     using exchange_core::gateway::CancelOrderCommand;
     using exchange_core::gateway::OrderGateway;
     using exchange_core::gateway::PlaceOrderCommand;
+    using exchange_core::market_data::IMarketDataSink;
+    using exchange_core::market_data::Level2Update;
+    using exchange_core::market_data::MarketDataPublisher;
 
     constexpr exchange_core::domain::InstrumentId primary_instrument_id = 1;
 
@@ -368,6 +374,64 @@ namespace
             RejectReason::unknown_client);
     }
 
+    class RecordingMarketDataSink final : public IMarketDataSink
+    {
+    public:
+        void on_level_update(const Level2Update &update) override
+        {
+            updates.push_back(update);
+        }
+
+        std::vector<Level2Update> updates;
+    };
+
+    void publishes_monotonic_level_two_updates()
+    {
+        RecordingMarketDataSink sink;
+        MarketDataPublisher publisher(sink);
+
+        const Order first_order{
+            1, 1401, Side::buy, Price{100}, Quantity{4}, Quantity{4},
+            OrderStatus::new_order, OrderType::limit, 71};
+        const Order second_order{
+            1, 1402, Side::buy, Price{100}, Quantity{3}, Quantity{3},
+            OrderStatus::new_order, OrderType::limit, 72};
+        publisher.on_event(OrderAccepted{first_order, 1, 1401});
+        publisher.on_event(OrderAccepted{second_order, 1, 1402});
+        require(sink.updates.size() == 2);
+        require(sink.updates[0].aggregate_quantity == Quantity{4});
+        require(sink.updates[1].aggregate_quantity == Quantity{7});
+        require(sink.updates[0].sequence == 1);
+        require(sink.updates[1].sequence == 2);
+
+        const Trade trade{
+            ExecutionId{51}, 1, 9001, 1401, Price{100}, Quantity{2}};
+        publisher.on_event(TradeExecuted{
+            trade, 1, 9001, 1401, 100, 2});
+        require(sink.updates.back().aggregate_quantity == Quantity{5});
+        require(sink.updates.back().sequence == 3);
+
+        publisher.on_event(OrderCanceled{
+            second_order, 1, 1402});
+        require(sink.updates.back().aggregate_quantity == Quantity{2});
+        require(sink.updates.back().sequence == 4);
+
+        publisher.on_event(OrderRejected{
+            first_order, 1, 1401, RejectReason::invalid_order});
+        require(sink.updates.size() == 4);
+
+        RecordingMarketDataSink batch_sink;
+        MarketDataPublisher batch_publisher(batch_sink);
+        const Trade batch_trade{
+            ExecutionId{52}, 1, 9002, 1401, Price{100}, Quantity{4}};
+        batch_publisher.on_events({
+            OrderAccepted{first_order, 1, 1401},
+            TradeExecuted{batch_trade, 1, 9002, 1401, 100, 4}});
+        require(batch_sink.updates.size() == 1);
+        require(batch_sink.updates[0].aggregate_quantity == Quantity{0});
+        require(batch_sink.updates[0].sequence == 1);
+    }
+
     void publishes_events_after_mutation_to_a_reentrant_sink()
     {
         ReentrantEventSink sink;
@@ -409,6 +473,36 @@ namespace
             RejectReason::unknown_instrument);
     }
 
+    void records_metrics_from_event_sink()
+    {
+        exchange_core::metrics::MetricsCollector metrics;
+        MatchingEngine engine({}, &metrics);
+        register_primary_instrument(engine);
+
+        const auto bid = engine.place_order(PlaceOrder{1, 1501, Side::buy, 100, 10, OrderType::limit, 20});
+        const auto ask = engine.place_order(PlaceOrder{1, 1502, Side::sell, 100, 10, OrderType::limit, 21});
+
+        require(std::holds_alternative<OrderAccepted>(event_at(bid, 0)));
+        require(std::holds_alternative<OrderAccepted>(event_at(ask, 0)));
+        require(std::get<TradeExecuted>(event_at(ask, 1)).execution_quantity == 10U);
+
+        const auto snapshot = metrics.snapshot();
+        require(snapshot.events_seen == 3);
+        require(snapshot.accepted_orders == 2);
+        require(snapshot.trades_executed == 1);
+        require(snapshot.rejected_orders == 0);
+    }
+
+    void benchmark_reports_place_cancel_throughput()
+    {
+        const auto result = exchange_core::benchmark::run_place_cancel_benchmark(250);
+        require(result.iterations == 250);
+        require(result.operations == 500);
+        require(result.accepted_orders == 250);
+        require(result.canceled_orders == 250);
+        require(result.ops_per_second >= 0.0);
+    }
+
 } // namespace
 
 int main()
@@ -425,8 +519,11 @@ int main()
     tracks_account_reservations_positions_and_ownership();
     applies_credit_limits_and_releases_margin_reservations();
     enforces_gateway_identity_and_request_sequences();
+    publishes_monotonic_level_two_updates();
     publishes_events_after_mutation_to_a_reentrant_sink();
     isolates_identical_order_ids_between_instruments();
     rejects_unknown_instruments();
+    records_metrics_from_event_sink();
+    benchmark_reports_place_cancel_throughput();
     return 0;
 }
