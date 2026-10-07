@@ -45,6 +45,8 @@ infrastructure and does not connect to live exchanges or handle real funds.
     lifecycle events with a documented key/value serialization format.
 - `FileJournal` append-only persistence with flush/error handling and malformed-record
     detection for durable recovery workflows.
+- Versioned snapshot persistence with checksum validation, temp-file writes, fsync,
+    and atomic rename for durable state recovery.
 
 The current implementation requires instruments to be registered before orders are
 accepted. The first durable file layer:
@@ -57,7 +59,7 @@ accepted. The first durable file layer:
 
 The following features remain planned for future releases:
 
-- Versioned snapshots and replay from empty state plus snapshot/journal recovery.
+- Replay from empty state plus snapshot/journal recovery.
 - Load testing, sanitizers, and broader benchmark reporting.
 
 Design notes and the longer-term roadmap are maintained in

@@ -37,6 +37,7 @@ add_library(exchange_core STATIC
     src/market_data/market_data_publisher.cpp
     src/metrics/metrics_collector.cpp
     src/risk/account_risk_manager.cpp
+    src/snapshot/snapshot_store.cpp
     src/risk/fat_finger_validator.cpp
     src/risk/risk_manager.cpp
 )

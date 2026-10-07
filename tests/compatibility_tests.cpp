@@ -5,6 +5,7 @@
 #include "exchange_core/journal/journal_record.hpp"
 #include "exchange_core/market_data/market_data_publisher.hpp"
 #include "exchange_core/metrics/metrics_collector.hpp"
+#include "exchange_core/snapshot/snapshot_store.hpp"
 
 #include <cstdlib>
 #include <fstream>
@@ -591,6 +592,33 @@ namespace
         require(malformed_records.records[0].sequence == 1);
     }
 
+    void writes_and_validates_versioned_snapshot_state()
+    {
+        using exchange_core::snapshot::SnapshotReadStatus;
+        using exchange_core::snapshot::SnapshotRecord;
+        using exchange_core::snapshot::SnapshotStore;
+
+        const std::string path = "/tmp/exchange_core_day19_snapshot.txt";
+        std::remove(path.c_str());
+
+        const std::string payload = "instrument_id=1 sequence=42 bids=2 asks=3 last=100";
+        SnapshotStore store(path);
+        require(store.write({1U, 42U, payload, 0U}));
+
+        const auto read = store.read();
+        require(read.status == SnapshotReadStatus::ok);
+        require(read.record.version == 1U);
+        require(read.record.sequence == 42U);
+        require(read.record.payload == payload);
+
+        std::ofstream tampered(path, std::ios::binary | std::ios::trunc);
+        tampered << "version=1\nsequence=42\npayload_length=0\nchecksum=999999999999\n";
+        tampered.flush();
+
+        const auto tampered_result = SnapshotStore(path).read();
+        require(tampered_result.status == SnapshotReadStatus::checksum_mismatch);
+    }
+
 } // namespace
 
 int main()
@@ -615,5 +643,6 @@ int main()
     benchmark_reports_place_cancel_throughput();
     serializes_versioned_journal_records();
     appends_records_and_rejects_malformed_input();
+    writes_and_validates_versioned_snapshot_state();
     return 0;
 }
