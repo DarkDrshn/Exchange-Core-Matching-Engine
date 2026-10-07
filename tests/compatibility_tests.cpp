@@ -1,10 +1,14 @@
 #include "exchange_core/benchmark/benchmark.hpp"
 #include "exchange_core/engine/matching_engine.hpp"
 #include "exchange_core/gateway/order_gateway.hpp"
+#include "exchange_core/journal/file_journal.hpp"
+#include "exchange_core/journal/journal_record.hpp"
 #include "exchange_core/market_data/market_data_publisher.hpp"
 #include "exchange_core/metrics/metrics_collector.hpp"
+#include "exchange_core/snapshot/snapshot_store.hpp"
 
 #include <cstdlib>
+#include <fstream>
 #include <variant>
 #include <vector>
 
@@ -503,6 +507,118 @@ namespace
         require(result.ops_per_second >= 0.0);
     }
 
+    void serializes_versioned_journal_records()
+    {
+        using exchange_core::journal::JournalRecord;
+        using exchange_core::journal::JournalRecordKind;
+        using exchange_core::journal::serialize_record;
+
+        const JournalRecord accepted{
+            1,
+            JournalRecordKind::order_accepted,
+            17,
+            1,
+            1001,
+            Side::buy,
+            100,
+            5,
+            5,
+            0,
+            0,
+            777,
+            888,
+            0};
+
+        const auto text = serialize_record(accepted);
+        require(!text.empty());
+        require(text.find("version=1") != std::string::npos);
+        require(text.find("kind=order_accepted") != std::string::npos);
+        require(text.find("sequence=17") != std::string::npos);
+        require(text.find("order_id=1001") != std::string::npos);
+
+        const auto rejected_reason =
+            static_cast<std::uint64_t>(RejectReason::risk_fat_finger_limit);
+        const JournalRecord rejected{
+            1,
+            JournalRecordKind::order_rejected,
+            18,
+            1,
+            1002,
+            Side::sell,
+            101,
+            2,
+            2,
+            0,
+            0,
+            0,
+            0,
+            rejected_reason};
+
+        const auto rejected_text = serialize_record(rejected);
+        require(rejected_text.find("kind=order_rejected") != std::string::npos);
+        require(rejected_text.find("reason=" + std::to_string(rejected_reason)) != std::string::npos);
+    }
+
+    void appends_records_and_rejects_malformed_input()
+    {
+        using exchange_core::journal::FileJournal;
+        using exchange_core::journal::JournalReadStatus;
+        using exchange_core::journal::JournalRecord;
+        using exchange_core::journal::JournalRecordKind;
+
+        const std::string path = "/tmp/exchange_core_day18_journal.txt";
+        std::remove(path.c_str());
+
+        FileJournal journal(path);
+        const JournalRecord first{1, JournalRecordKind::order_accepted, 1, 1, 2001, Side::buy, 100, 4, 4, 0, 0, 30, 0, 0};
+        const JournalRecord second{1, JournalRecordKind::trade_executed, 2, 1, 2001, Side::sell, 100, 2, 0, 2, 2001, 2002, 31, 32};
+        require(journal.append_record(first));
+        require(journal.append_record(second));
+
+        const auto records = journal.read_all();
+        require(records.status == JournalReadStatus::ok);
+        require(records.records.size() == 2);
+        require(records.records[0].sequence == 1);
+        require(records.records[1].sequence == 2);
+
+        std::ofstream malformed(path, std::ios::trunc | std::ios::binary);
+        malformed << serialize_record(first) << '\n';
+        malformed << "this is not a valid journal record\n";
+        malformed.flush();
+
+        const auto malformed_records = FileJournal(path).read_all();
+        require(malformed_records.status == JournalReadStatus::malformed_record);
+        require(malformed_records.records.size() == 1);
+        require(malformed_records.records[0].sequence == 1);
+    }
+
+    void writes_and_validates_versioned_snapshot_state()
+    {
+        using exchange_core::snapshot::SnapshotReadStatus;
+        using exchange_core::snapshot::SnapshotRecord;
+        using exchange_core::snapshot::SnapshotStore;
+
+        const std::string path = "/tmp/exchange_core_day19_snapshot.txt";
+        std::remove(path.c_str());
+
+        const std::string payload = "instrument_id=1 sequence=42 bids=2 asks=3 last=100";
+        SnapshotStore store(path);
+        require(store.write({1U, 42U, payload, 0U}));
+
+        const auto read = store.read();
+        require(read.status == SnapshotReadStatus::ok);
+        require(read.record.version == 1U);
+        require(read.record.sequence == 42U);
+        require(read.record.payload == payload);
+
+        std::ofstream tampered(path, std::ios::binary | std::ios::trunc);
+        tampered << "version=1\nsequence=42\npayload_length=0\nchecksum=999999999999\n";
+        tampered.flush();
+
+        const auto tampered_result = SnapshotStore(path).read();
+        require(tampered_result.status == SnapshotReadStatus::checksum_mismatch);
+    }
+
 } // namespace
 
 int main()
@@ -525,5 +641,8 @@ int main()
     rejects_unknown_instruments();
     records_metrics_from_event_sink();
     benchmark_reports_place_cancel_throughput();
+    serializes_versioned_journal_records();
+    appends_records_and_rejects_malformed_input();
+    writes_and_validates_versioned_snapshot_state();
     return 0;
 }

@@ -41,18 +41,25 @@ infrastructure and does not connect to live exchanges or handle real funds.
     metrics with event-sink integration.
 - `exchange_core_bench` place/cancel benchmark harness and `exchange_core_cli`
     adapter with `--benchmark`, `--stats`, and `--simulate` modes.
+- Versioned journal record definitions for accepted, rejected, trade, cancel, and
+    lifecycle events with a documented key/value serialization format.
+- `FileJournal` append-only persistence with flush/error handling and malformed-record
+    detection for durable recovery workflows.
+- Versioned snapshot persistence with checksum validation, temp-file writes, fsync,
+    and atomic rename for durable state recovery.
 
 The current implementation requires instruments to be registered before orders are
-accepted. the first operational telemetry and tooling layer:
+accepted. The first durable file layer:
 
-- `MetricsCollector` for engine event counts and latency samples.
-- A deterministic place/cancel benchmark harness for throughput smoke tests.
-- A small CLI adapter for `--benchmark`, `--stats`, and `--simulate` usage.
+- A versioned journal record schema for accepted, rejected, trade, cancel, and
+  lifecycle events.
+- Stable key/value serialization for append-only journal writes.
+- `FileJournal` with flush/error handling and malformed/partial-record detection.
+- Documentation describing the format and versioning contract under `docs/journal/`.
 
 The following features remain planned for future releases:
 
-- Portfolio-aware risk checks and reference-price validation.
-- Event journaling, snapshots, and replay.
+- Replay from empty state plus snapshot/journal recovery.
 - Load testing, sanitizers, and broader benchmark reporting.
 
 Design notes and the longer-term roadmap are maintained in
