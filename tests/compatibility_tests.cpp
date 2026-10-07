@@ -1,6 +1,7 @@
 #include "exchange_core/benchmark/benchmark.hpp"
 #include "exchange_core/engine/matching_engine.hpp"
 #include "exchange_core/gateway/order_gateway.hpp"
+#include "exchange_core/journal/journal_record.hpp"
 #include "exchange_core/market_data/market_data_publisher.hpp"
 #include "exchange_core/metrics/metrics_collector.hpp"
 
@@ -503,6 +504,58 @@ namespace
         require(result.ops_per_second >= 0.0);
     }
 
+    void serializes_versioned_journal_records()
+    {
+        using exchange_core::journal::JournalRecord;
+        using exchange_core::journal::JournalRecordKind;
+        using exchange_core::journal::serialize_record;
+
+        const JournalRecord accepted{
+            1,
+            JournalRecordKind::order_accepted,
+            17,
+            1,
+            1001,
+            Side::buy,
+            100,
+            5,
+            5,
+            0,
+            0,
+            777,
+            888,
+            0};
+
+        const auto text = serialize_record(accepted);
+        require(!text.empty());
+        require(text.find("version=1") != std::string::npos);
+        require(text.find("kind=order_accepted") != std::string::npos);
+        require(text.find("sequence=17") != std::string::npos);
+        require(text.find("order_id=1001") != std::string::npos);
+
+        const auto rejected_reason =
+            static_cast<std::uint64_t>(RejectReason::risk_fat_finger_limit);
+        const JournalRecord rejected{
+            1,
+            JournalRecordKind::order_rejected,
+            18,
+            1,
+            1002,
+            Side::sell,
+            101,
+            2,
+            2,
+            0,
+            0,
+            0,
+            0,
+            rejected_reason};
+
+        const auto rejected_text = serialize_record(rejected);
+        require(rejected_text.find("kind=order_rejected") != std::string::npos);
+        require(rejected_text.find("reason=" + std::to_string(rejected_reason)) != std::string::npos);
+    }
+
 } // namespace
 
 int main()
@@ -525,5 +578,6 @@ int main()
     rejects_unknown_instruments();
     records_metrics_from_event_sink();
     benchmark_reports_place_cancel_throughput();
+    serializes_versioned_journal_records();
     return 0;
 }
