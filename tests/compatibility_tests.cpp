@@ -1,11 +1,13 @@
 #include "exchange_core/benchmark/benchmark.hpp"
 #include "exchange_core/engine/matching_engine.hpp"
 #include "exchange_core/gateway/order_gateway.hpp"
+#include "exchange_core/journal/file_journal.hpp"
 #include "exchange_core/journal/journal_record.hpp"
 #include "exchange_core/market_data/market_data_publisher.hpp"
 #include "exchange_core/metrics/metrics_collector.hpp"
 
 #include <cstdlib>
+#include <fstream>
 #include <variant>
 #include <vector>
 
@@ -556,6 +558,39 @@ namespace
         require(rejected_text.find("reason=" + std::to_string(rejected_reason)) != std::string::npos);
     }
 
+    void appends_records_and_rejects_malformed_input()
+    {
+        using exchange_core::journal::FileJournal;
+        using exchange_core::journal::JournalReadStatus;
+        using exchange_core::journal::JournalRecord;
+        using exchange_core::journal::JournalRecordKind;
+
+        const std::string path = "/tmp/exchange_core_day18_journal.txt";
+        std::remove(path.c_str());
+
+        FileJournal journal(path);
+        const JournalRecord first{1, JournalRecordKind::order_accepted, 1, 1, 2001, Side::buy, 100, 4, 4, 0, 0, 30, 0, 0};
+        const JournalRecord second{1, JournalRecordKind::trade_executed, 2, 1, 2001, Side::sell, 100, 2, 0, 2, 2001, 2002, 31, 32};
+        require(journal.append_record(first));
+        require(journal.append_record(second));
+
+        const auto records = journal.read_all();
+        require(records.status == JournalReadStatus::ok);
+        require(records.records.size() == 2);
+        require(records.records[0].sequence == 1);
+        require(records.records[1].sequence == 2);
+
+        std::ofstream malformed(path, std::ios::trunc | std::ios::binary);
+        malformed << serialize_record(first) << '\n';
+        malformed << "this is not a valid journal record\n";
+        malformed.flush();
+
+        const auto malformed_records = FileJournal(path).read_all();
+        require(malformed_records.status == JournalReadStatus::malformed_record);
+        require(malformed_records.records.size() == 1);
+        require(malformed_records.records[0].sequence == 1);
+    }
+
 } // namespace
 
 int main()
@@ -579,5 +614,6 @@ int main()
     records_metrics_from_event_sink();
     benchmark_reports_place_cancel_throughput();
     serializes_versioned_journal_records();
+    appends_records_and_rejects_malformed_input();
     return 0;
 }

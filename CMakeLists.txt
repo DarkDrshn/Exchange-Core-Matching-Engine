@@ -32,6 +32,7 @@ add_library(exchange_core STATIC
     src/domain/order_book.cpp
     src/engine/matching_engine.cpp
     src/gateway/order_gateway.cpp
+    src/journal/file_journal.cpp
     src/journal/journal_record.cpp
     src/market_data/market_data_publisher.cpp
     src/metrics/metrics_collector.cpp

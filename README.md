@@ -43,18 +43,20 @@ infrastructure and does not connect to live exchanges or handle real funds.
     adapter with `--benchmark`, `--stats`, and `--simulate` modes.
 - Versioned journal record definitions for accepted, rejected, trade, cancel, and
     lifecycle events with a documented key/value serialization format.
+- `FileJournal` append-only persistence with flush/error handling and malformed-record
+    detection for durable recovery workflows.
 
 The current implementation requires instruments to be registered before orders are
-accepted. The first durable-data contract layer:
+accepted. The first durable file layer:
 
 - A versioned journal record schema for accepted, rejected, trade, cancel, and
   lifecycle events.
-- Stable key/value serialization for future append-only and replay workflows.
+- Stable key/value serialization for append-only journal writes.
+- `FileJournal` with flush/error handling and malformed/partial-record detection.
 - Documentation describing the format and versioning contract under `docs/journal/`.
 
 The following features remain planned for future releases:
 
-- Append-only file journaling and flush/error handling.
 - Versioned snapshots and replay from empty state plus snapshot/journal recovery.
 - Load testing, sanitizers, and broader benchmark reporting.
 
